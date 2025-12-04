@@ -31,11 +31,22 @@ func NewHookRunner(log zerolog.Logger, executor executil.Executor, stdout, stder
 
 // RunHooks executes hooks matching the remote URL.
 func (h *HookRunner) RunHooks(ctx context.Context, hooks []config.Hook, remote, path string) error {
+	h.log.Debug().
+		Str("remote", remote).
+		Int("hook_count", len(hooks)).
+		Msg("evaluating hooks")
+
 	for _, hook := range hooks {
 		matched, err := matchPattern(hook.Pattern, remote)
 		if err != nil {
 			return fmt.Errorf("match pattern %q: %w", hook.Pattern, err)
 		}
+
+		h.log.Debug().
+			Str("pattern", hook.Pattern).
+			Str("remote", remote).
+			Bool("matched", matched).
+			Msg("hook pattern evaluated")
 
 		if !matched {
 			continue
