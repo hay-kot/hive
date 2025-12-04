@@ -66,6 +66,12 @@ var (
 	gitBranchStyle = lipgloss.NewStyle().
 			Foreground(colorWhite)
 
+	gitAdditionsStyle = lipgloss.NewStyle().
+				Foreground(colorGreen)
+
+	gitDeletionsStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#f38ba8")) // red
+
 	gitCleanStyle = lipgloss.NewStyle().
 			Foreground(colorGreen)
 

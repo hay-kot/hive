@@ -128,11 +128,12 @@ func (d SessionDelegate) renderGitStatus(path string) string {
 		return gitLoadingStyle.Render("Git: unavailable")
 	}
 
-	// Format: branch (+N -N) • clean/uncommitted changes
+	// Format: branch +N -N • clean/uncommitted changes
 	branch := gitBranchStyle.Render(status.Branch)
 
-	// Diff stats (always show)
-	stats := gitBranchStyle.Render(fmt.Sprintf(" (+%d -%d)", status.Additions, status.Deletions))
+	// Diff stats with colored additions (green) and deletions (red)
+	additions := gitAdditionsStyle.Render(fmt.Sprintf(" +%d", status.Additions))
+	deletions := gitDeletionsStyle.Render(fmt.Sprintf(" -%d", status.Deletions))
 
 	// Clean/dirty indicator
 	var indicator string
@@ -142,5 +143,5 @@ func (d SessionDelegate) renderGitStatus(path string) string {
 		indicator = gitCleanStyle.Render(" • clean")
 	}
 
-	return branch + stats + indicator
+	return branch + additions + deletions + indicator
 }
