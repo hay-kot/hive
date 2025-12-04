@@ -2,6 +2,8 @@ version: "3"
 
 env:
   LOG_LEVEL: "debug"
+  HIVE_CONFIG: "./config.dev.yaml"
+  HIVE_DATA_DIR: "./.data"
 
 tasks:
   run:

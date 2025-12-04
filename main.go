@@ -12,6 +12,7 @@ import (
 	"github.com/urfave/cli/v3"
 
 	"github.com/hay-kot/hive/internal/commands"
+	"github.com/hay-kot/hive/internal/core/config"
 	"github.com/hay-kot/hive/internal/printer"
 )
 
@@ -92,11 +93,32 @@ func main() {
 				Sources:     cli.EnvVars("LOG_FILE"),
 				Destination: &flags.LogFile,
 			},
+			&cli.StringFlag{
+				Name:        "config",
+				Aliases:     []string{"c"},
+				Usage:       "path to config file",
+				Sources:     cli.EnvVars("HIVE_CONFIG"),
+				Value:       commands.DefaultConfigPath(),
+				Destination: &flags.ConfigPath,
+			},
+			&cli.StringFlag{
+				Name:        "data-dir",
+				Usage:       "path to data directory",
+				Sources:     cli.EnvVars("HIVE_DATA_DIR"),
+				Value:       commands.DefaultDataDir(),
+				Destination: &flags.DataDir,
+			},
 		},
 		Before: func(ctx context.Context, c *cli.Command) (context.Context, error) {
 			if err := setupLogger(flags.LogLevel, flags.LogFile); err != nil {
 				return ctx, err
 			}
+
+			cfg, err := config.Load(flags.ConfigPath, flags.DataDir)
+			if err != nil {
+				return ctx, fmt.Errorf("load config: %w", err)
+			}
+			flags.Config = cfg
 
 			return ctx, nil
 		},

@@ -1,0 +1,23 @@
+git_path: git
+
+commands:
+  spawn:
+    - 'wezterm cli spawn --cwd "{{ .Path }}" -- claude --prompt "{{ .Prompt }}"'
+  recycle:
+    - git reset --hard
+    - git checkout main
+    - git pull
+
+keybindings:
+  r:
+    action: recycle
+    help: mark recycled
+  d:
+    action: delete
+    confirm: Delete this session?
+  o:
+    help: open in finder
+    sh: "open {{ .Path }}"
+  O:
+    help: open remote
+    sh: "open {{ .Remote }}"
