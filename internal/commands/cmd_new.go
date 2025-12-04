@@ -3,7 +3,9 @@ package commands
 import (
 	"context"
 	"fmt"
+	"strings"
 
+	"github.com/charmbracelet/huh"
 	"github.com/hay-kot/hive/internal/hive"
 	"github.com/hay-kot/hive/internal/printer"
 	"github.com/urfave/cli/v3"
@@ -34,7 +36,6 @@ func (cmd *NewCmd) Register(app *cli.Command) *cli.Command {
 				Name:        "name",
 				Aliases:     []string{"n"},
 				Usage:       "Session name (used in directory path)",
-				Required:    true,
 				Destination: &cmd.name,
 			},
 			&cli.StringFlag{
@@ -59,6 +60,16 @@ func (cmd *NewCmd) Register(app *cli.Command) *cli.Command {
 func (cmd *NewCmd) run(ctx context.Context, c *cli.Command) error {
 	p := printer.Ctx(ctx)
 
+	// Show interactive form if name not provided via flag
+	if cmd.name == "" {
+		if err := cmd.runForm(); err != nil {
+			if err == huh.ErrUserAborted {
+				return nil
+			}
+			return fmt.Errorf("form: %w", err)
+		}
+	}
+
 	opts := hive.CreateOptions{
 		Name:   cmd.name,
 		Remote: cmd.remote,
@@ -72,5 +83,28 @@ func (cmd *NewCmd) run(ctx context.Context, c *cli.Command) error {
 
 	p.Successf("Created session %s at %s", sess.ID, sess.Path)
 
+	return nil
+}
+
+func (cmd *NewCmd) runForm() error {
+	return huh.NewForm(
+		huh.NewGroup(
+			huh.NewInput().
+				Title("Session name").
+				Description("Used in the directory path").
+				Validate(validateName).
+				Value(&cmd.name),
+			huh.NewText().
+				Title("Prompt").
+				Description("AI prompt to pass to spawn command").
+				Value(&cmd.prompt),
+		),
+	).Run()
+}
+
+func validateName(s string) error {
+	if strings.TrimSpace(s) == "" {
+		return fmt.Errorf("name is required")
+	}
 	return nil
 }
