@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -63,31 +64,6 @@ func TestValidateDeep_InvalidHookPattern(t *testing.T) {
 	assert.Len(t, result.Errors, 1)
 	assert.Equal(t, "Hooks", result.Errors[0].Category)
 	assert.Contains(t, result.Errors[0].Message, "invalid regex")
-}
-
-func TestValidateDeep_GlobPatternWarning(t *testing.T) {
-	cfg := &Config{
-		GitPath: "git",
-		DataDir: t.TempDir(),
-		Hooks: []Hook{
-			{Pattern: "github.com/**/*.git", Commands: []string{"echo"}},
-		},
-	}
-
-	result := cfg.ValidateDeep("")
-
-	// Should have error for invalid regex
-	assert.False(t, result.IsValid())
-
-	// Should also have warning about glob pattern
-	hasGlobWarning := false
-	for _, w := range result.Warnings {
-		if w.Category == "Hooks" && contains(w.Message, "glob") {
-			hasGlobWarning = true
-			break
-		}
-	}
-	assert.True(t, hasGlobWarning, "expected warning about glob pattern")
 }
 
 func TestValidateDeep_KeybindingBothActionAndSh(t *testing.T) {
@@ -245,7 +221,7 @@ func TestValidateDeep_EmptyHookCommands(t *testing.T) {
 	assert.True(t, result.IsValid())
 	hasWarning := false
 	for _, w := range result.Warnings {
-		if w.Category == "Hooks" && contains(w.Message, "no commands") {
+		if w.Category == "Hooks" && strings.Contains(w.Message, "no commands") {
 			hasWarning = true
 			break
 		}
@@ -274,27 +250,6 @@ func TestValidateDeep_EmptyRecycleCommands(t *testing.T) {
 		}
 	}
 	assert.True(t, hasWarning, "expected warning about empty recycle commands")
-}
-
-func TestLooksLikeGlob(t *testing.T) {
-	tests := []struct {
-		pattern string
-		want    bool
-	}{
-		{"**/*.git", true},
-		{"*.txt", true},
-		{"foo/**", true},
-		{"^https://.*", false},
-		{"github\\.com/.*", false},
-		{"[a-z]+", false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.pattern, func(t *testing.T) {
-			got := looksLikeGlob(tt.pattern)
-			assert.Equal(t, tt.want, got)
-		})
-	}
 }
 
 func TestValidationResult_IsValid(t *testing.T) {

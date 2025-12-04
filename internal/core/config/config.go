@@ -47,7 +47,7 @@ type GitConfig struct {
 
 // Hook defines setup commands for specific repositories.
 type Hook struct {
-	// Pattern matches against remote URL (supports glob patterns).
+	// Pattern matches against remote URL (regex pattern).
 	Pattern string `yaml:"pattern"`
 	// Commands to run in the session directory after clone/recycle.
 	Commands []string `yaml:"commands"`

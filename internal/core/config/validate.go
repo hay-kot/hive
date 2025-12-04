@@ -2,9 +2,11 @@ package config
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"regexp"
+	"sort"
 	"text/template"
 )
 
@@ -17,24 +19,24 @@ type ValidationResult struct {
 
 // ValidationError represents a configuration error.
 type ValidationError struct {
-	Category string
-	Item     string
-	Message  string
-	Fix      string
+	Category string `json:"category"`
+	Item     string `json:"item,omitempty"`
+	Message  string `json:"message"`
+	Fix      string `json:"fix,omitempty"`
 }
 
 // ValidationWarning represents a non-fatal configuration issue.
 type ValidationWarning struct {
-	Category string
-	Item     string
-	Message  string
+	Category string `json:"category"`
+	Item     string `json:"item,omitempty"`
+	Message  string `json:"message"`
 }
 
 // ValidationCheck represents a successful validation check.
 type ValidationCheck struct {
-	Category string
-	Message  string
-	Details  []string
+	Category string   `json:"category"`
+	Message  string   `json:"message"`
+	Details  []string `json:"details,omitempty"`
 }
 
 // IsValid returns true if there are no errors.
@@ -225,15 +227,6 @@ func (c *Config) validateHooks(result *ValidationResult) {
 				Message:  fmt.Sprintf("invalid regex %q: %v", hook.Pattern, err),
 				Fix:      "Use valid regex syntax. Note: hive uses regex, not glob patterns",
 			})
-
-			// Check if it looks like a glob pattern
-			if looksLikeGlob(hook.Pattern) {
-				result.Warnings = append(result.Warnings, ValidationWarning{
-					Category: "Hooks",
-					Item:     fmt.Sprintf("pattern %d", i),
-					Message:  fmt.Sprintf("pattern %q looks like a glob pattern; use regex instead", hook.Pattern),
-				})
-			}
 		} else {
 			details = append(details, fmt.Sprintf("Pattern %d: %s (valid regex)", i, hook.Pattern))
 		}
@@ -267,8 +260,15 @@ func (c *Config) validateKeybindings(result *ValidationResult) {
 		return
 	}
 
+	keys := make([]string, 0, len(c.Keybindings))
+	for k := range c.Keybindings {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
 	details := []string{}
-	for key, kb := range c.Keybindings {
+	for _, key := range keys {
+		kb := c.Keybindings[key]
 		// Check action vs shell
 		if kb.Action == "" && kb.Sh == "" {
 			result.Errors = append(result.Errors, ValidationError{
@@ -345,39 +345,5 @@ func validateTemplate(tmplStr string, data any) error {
 
 	// Dry-run execute to catch missing key errors
 	// We pass empty/zero data so missing keys are caught
-	var buf struct{}
-	_ = buf
-	return t.Execute(&nopWriter{}, data)
-}
-
-// nopWriter discards all writes.
-type nopWriter struct{}
-
-func (nopWriter) Write(p []byte) (int, error) {
-	return len(p), nil
-}
-
-// looksLikeGlob checks if a pattern appears to be a glob rather than regex.
-func looksLikeGlob(pattern string) bool {
-	// Glob patterns often use ** or *. without proper regex escaping
-	globIndicators := []string{"**", "*.", "*."}
-	for _, indicator := range globIndicators {
-		if contains(pattern, indicator) {
-			return true
-		}
-	}
-	return false
-}
-
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsAt(s, substr))
-}
-
-func containsAt(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
+	return t.Execute(io.Discard, data)
 }
