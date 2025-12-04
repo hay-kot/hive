@@ -90,6 +90,7 @@ func (s *Service) CreateSession(ctx context.Context, opts CreateOptions) (*sessi
 
 		sess = recyclable
 		sess.Name = opts.Name
+		sess.Prompt = opts.Prompt
 		sess.State = session.StateActive
 		sess.UpdatedAt = time.Now()
 	} else {

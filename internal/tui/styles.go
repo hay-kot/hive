@@ -44,8 +44,8 @@ var (
 	pathStyle = lipgloss.NewStyle().
 			Foreground(colorGray)
 
-	// ID style for subtle, italic session ID.
-	idStyle = lipgloss.NewStyle().
+	// Prompt style for session prompt text.
+	promptStyle = lipgloss.NewStyle().
 			Foreground(colorGray).
 			Italic(true)
 
