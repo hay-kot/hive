@@ -11,7 +11,7 @@ commands:
     - git pull
 
 hooks:
-  - pattern: "**/hay-kot/recipinned"
+  - pattern: ".*/hay-kot/recipinned"
     commands:
       - mise trust
       - task dep:sync

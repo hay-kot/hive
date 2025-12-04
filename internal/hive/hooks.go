@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"regexp"
 
-	"github.com/bmatcuk/doublestar/v4"
 	"github.com/hay-kot/hive/internal/core/config"
 	"github.com/hay-kot/hive/pkg/executil"
 	"github.com/rs/zerolog"
@@ -67,8 +67,7 @@ func (h *HookRunner) RunHooks(ctx context.Context, hooks []config.Hook, remote, 
 	return nil
 }
 
-// matchPattern checks if remote matches the glob pattern using doublestar.
-// Supports ** for matching across path separators.
+// matchPattern checks if remote matches the regex pattern.
 func matchPattern(pattern, remote string) (bool, error) {
-	return doublestar.Match(pattern, remote)
+	return regexp.MatchString(pattern, remote)
 }
