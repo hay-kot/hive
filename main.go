@@ -134,10 +134,16 @@ func main() {
 			return ctx, nil
 		},
 	}
+
+	tuiCmd := commands.NewTuiCmd(flags)
+
 	app = commands.NewNewCmd(flags).Register(app)
-	app = commands.NewTuiCmd(flags).Register(app)
+	app = tuiCmd.Register(app)
 	app = commands.NewLsCmd(flags).Register(app)
 	app = commands.NewPruneCmd(flags).Register(app)
+
+	// Set TUI as default action when no subcommand is provided
+	app.Action = tuiCmd.Run
 
 	exitCode := 0
 	if err := app.Run(ctx, os.Args); err != nil {

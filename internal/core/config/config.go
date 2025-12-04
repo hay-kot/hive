@@ -15,6 +15,20 @@ const (
 	ActionDelete  = "delete"
 )
 
+// defaultKeybindings provides built-in keybindings that users can override.
+var defaultKeybindings = map[string]Keybinding{
+	"r": {
+		Action:  ActionRecycle,
+		Help:    "recycle",
+		Confirm: "Are you sure you want to recycle this session?",
+	},
+	"d": {
+		Action:  ActionDelete,
+		Help:    "delete",
+		Confirm: "Are you sure you want to delete this session?",
+	},
+}
+
 // Config holds the application configuration.
 type Config struct {
 	Commands    Commands              `yaml:"commands"`
@@ -80,11 +94,32 @@ func Load(configPath, dataDir string) (*Config, error) {
 		}
 	}
 
+	// Merge user keybindings into defaults (user config overrides defaults)
+	cfg.Keybindings = mergeKeybindings(defaultKeybindings, cfg.Keybindings)
+
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid config: %w", err)
 	}
 
 	return &cfg, nil
+}
+
+// mergeKeybindings merges user keybindings into defaults.
+// User keybindings override defaults for the same key.
+func mergeKeybindings(defaults, user map[string]Keybinding) map[string]Keybinding {
+	result := make(map[string]Keybinding, len(defaults)+len(user))
+
+	// Copy defaults first
+	for k, v := range defaults {
+		result[k] = v
+	}
+
+	// Override with user config
+	for k, v := range user {
+		result[k] = v
+	}
+
+	return result
 }
 
 // Validate checks that the configuration is valid.

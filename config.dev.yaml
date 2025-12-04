@@ -11,22 +11,12 @@ commands:
     - git pull
 
 hooks:
-  - pattern: "**recipinned**"
+  - pattern: "**hay-kot/recipinned**"
     commands:
       - mise trust
       - task dep:sync
 
 keybindings:
-  r:
-    action: recycle
-    help: mark recycled
-  d:
-    action: delete
-    confirm: Delete this session?
   o:
     help: open in finder
     sh: "open {{ .Path }}"
-  O:
-    help: open remote
-    sh: "open {{ .Remote }}"
-
