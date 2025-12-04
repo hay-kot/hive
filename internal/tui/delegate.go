@@ -11,6 +11,9 @@ import (
 	"github.com/hay-kot/hive/pkg/kv"
 )
 
+// maxPromptDisplayLen is the maximum number of runes to display for a session prompt.
+const maxPromptDisplayLen = 60
+
 // SessionItem wraps a session for the list component.
 type SessionItem struct {
 	Session session.Session
@@ -77,7 +80,7 @@ func (d SessionDelegate) Render(w io.Writer, m list.Model, index int, item list.
 	s := sessionItem.Session
 	isSelected := index == m.Index()
 
-	// Build the title line: Name #ID [state]
+	// Build the title line: Name [state]
 	var stateStyle lipgloss.Style
 	switch s.State {
 	case session.StateActive:
@@ -99,9 +102,9 @@ func (d SessionDelegate) Render(w io.Writer, m list.Model, index int, item list.
 	if prompt == "" {
 		prompt = "(no prompt)"
 	}
-	maxPromptLen := 60
-	if len(prompt) > maxPromptLen {
-		prompt = prompt[:maxPromptLen-3] + "..."
+	promptRunes := []rune(prompt)
+	if len(promptRunes) > maxPromptDisplayLen {
+		prompt = string(promptRunes[:maxPromptDisplayLen-3]) + "..."
 	}
 	promptLine := promptStyle.Render(prompt)
 
