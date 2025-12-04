@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -72,7 +73,7 @@ func (cmd *NewCmd) run(ctx context.Context, c *cli.Command) error {
 	// Show interactive form if name not provided via flag
 	if cmd.name == "" {
 		if err := cmd.runForm(); err != nil {
-			if err == huh.ErrUserAborted {
+			if errors.Is(err, huh.ErrUserAborted) {
 				return nil
 			}
 			return fmt.Errorf("form: %w", err)
