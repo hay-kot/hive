@@ -81,12 +81,8 @@ func (s *Service) CreateSession(ctx context.Context, opts CreateOptions) (*sessi
 	var sess session.Session
 
 	if err == nil {
-		// Recycle existing session
+		// Reuse existing recycled session (already cleaned up when marked for recycle)
 		s.log.Debug().Str("session_id", recyclable.ID).Msg("found recyclable session")
-
-		if err := s.recycler.Recycle(ctx, recyclable.Path, s.config.Commands.Recycle); err != nil {
-			return nil, fmt.Errorf("recycle session %s: %w", recyclable.ID, err)
-		}
 
 		sess = recyclable
 		sess.Name = opts.Name
@@ -157,8 +153,18 @@ func (s *Service) GetSession(ctx context.Context, id string) (session.Session, e
 	return s.sessions.Get(ctx, id)
 }
 
-// RecycleSession marks a session for recycling.
+// RecycleSession marks a session for recycling and runs recycle commands immediately.
 func (s *Service) RecycleSession(ctx context.Context, id string) error {
+	return s.recycleSession(ctx, id, false)
+}
+
+// RecycleSessionSilent marks a session for recycling without streaming output.
+// Use this from the TUI to avoid mangling the display.
+func (s *Service) RecycleSessionSilent(ctx context.Context, id string) error {
+	return s.recycleSession(ctx, id, true)
+}
+
+func (s *Service) recycleSession(ctx context.Context, id string, silent bool) error {
 	sess, err := s.sessions.Get(ctx, id)
 	if err != nil {
 		return fmt.Errorf("get session: %w", err)
@@ -168,13 +174,23 @@ func (s *Service) RecycleSession(ctx context.Context, id string) error {
 		return fmt.Errorf("session %s cannot be recycled (state: %s)", id, sess.State)
 	}
 
+	// Run recycle commands immediately
+	if silent {
+		err = s.recycler.RecycleSilent(ctx, sess.Path, s.config.Commands.Recycle)
+	} else {
+		err = s.recycler.Recycle(ctx, sess.Path, s.config.Commands.Recycle)
+	}
+	if err != nil {
+		return fmt.Errorf("recycle session %s: %w", id, err)
+	}
+
 	sess.MarkRecycled(time.Now())
 
 	if err := s.sessions.Save(ctx, sess); err != nil {
 		return fmt.Errorf("save session: %w", err)
 	}
 
-	s.log.Info().Str("session_id", id).Msg("session marked for recycling")
+	s.log.Info().Str("session_id", id).Msg("session recycled")
 
 	return nil
 }
