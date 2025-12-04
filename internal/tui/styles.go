@@ -73,7 +73,7 @@ var (
 				Foreground(lipgloss.Color("#f38ba8")) // red
 
 	gitCleanStyle = lipgloss.NewStyle().
-			Foreground(colorGreen)
+			Foreground(colorGray)
 
 	gitDirtyStyle = lipgloss.NewStyle().
 			Foreground(colorYellow)
