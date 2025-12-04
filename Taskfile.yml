@@ -2,6 +2,7 @@ version: "3"
 
 env:
   HIVE_LOG_LEVEL: "debug"
+  HIVE_LOG_FILE: "./dev.log"
   HIVE_CONFIG: "./config.dev.yaml"
   HIVE_DATA_DIR: "./.data"
 
