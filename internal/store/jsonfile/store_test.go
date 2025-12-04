@@ -2,6 +2,7 @@ package jsonfile
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -43,7 +44,7 @@ func TestStore(t *testing.T) {
 		store := New(filepath.Join(t.TempDir(), "sessions.json"))
 
 		_, err := store.Get(ctx, "nonexistent")
-		if err != session.ErrNotFound {
+		if !errors.Is(err, session.ErrNotFound) {
 			t.Errorf("got %v, want ErrNotFound", err)
 		}
 	})
@@ -113,7 +114,7 @@ func TestStore(t *testing.T) {
 		}
 
 		_, err := store.Get(ctx, "delete-me")
-		if err != session.ErrNotFound {
+		if !errors.Is(err, session.ErrNotFound) {
 			t.Errorf("got %v, want ErrNotFound", err)
 		}
 	})
@@ -122,7 +123,7 @@ func TestStore(t *testing.T) {
 		store := New(filepath.Join(t.TempDir(), "sessions.json"))
 
 		err := store.Delete(ctx, "nonexistent")
-		if err != session.ErrNotFound {
+		if !errors.Is(err, session.ErrNotFound) {
 			t.Errorf("got %v, want ErrNotFound", err)
 		}
 	})
@@ -133,7 +134,7 @@ func TestStore(t *testing.T) {
 
 		// No recyclable sessions
 		_, err := store.FindRecyclable(ctx, remote)
-		if err != session.ErrNoRecyclable {
+		if !errors.Is(err, session.ErrNoRecyclable) {
 			t.Errorf("empty store: got %v, want ErrNoRecyclable", err)
 		}
 
@@ -147,7 +148,7 @@ func TestStore(t *testing.T) {
 		}
 
 		_, err = store.FindRecyclable(ctx, remote)
-		if err != session.ErrNoRecyclable {
+		if !errors.Is(err, session.ErrNoRecyclable) {
 			t.Errorf("active session: got %v, want ErrNoRecyclable", err)
 		}
 
@@ -161,7 +162,7 @@ func TestStore(t *testing.T) {
 		}
 
 		_, err = store.FindRecyclable(ctx, remote)
-		if err != session.ErrNoRecyclable {
+		if !errors.Is(err, session.ErrNoRecyclable) {
 			t.Errorf("different remote: got %v, want ErrNoRecyclable", err)
 		}
 

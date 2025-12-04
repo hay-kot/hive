@@ -1,0 +1,266 @@
+package hive
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"math/rand"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/hay-kot/hive/internal/core/config"
+	"github.com/hay-kot/hive/internal/core/git"
+	"github.com/hay-kot/hive/internal/core/session"
+	"github.com/hay-kot/hive/pkg/executil"
+	"github.com/rs/zerolog"
+)
+
+// CreateOptions configures session creation.
+type CreateOptions struct {
+	Name   string // Session name (used in path)
+	Remote string // Git remote URL to clone (auto-detected if empty)
+	Prompt string // AI prompt to pass to spawn command
+}
+
+// Service orchestrates hive operations.
+type Service struct {
+	sessions   session.Store
+	git        git.Git
+	config     *config.Config
+	executor   executil.Executor
+	log        zerolog.Logger
+	spawner    *Spawner
+	recycler   *Recycler
+	hookRunner *HookRunner
+}
+
+// New creates a new Service.
+func New(
+	sessions session.Store,
+	gitClient git.Git,
+	cfg *config.Config,
+	exec executil.Executor,
+	log zerolog.Logger,
+	stdout, stderr io.Writer,
+) *Service {
+	return &Service{
+		sessions:   sessions,
+		git:        gitClient,
+		config:     cfg,
+		executor:   exec,
+		log:        log,
+		spawner:    NewSpawner(log.With().Str("component", "spawner").Logger(), exec, stdout, stderr),
+		recycler:   NewRecycler(log.With().Str("component", "recycler").Logger(), exec, stdout, stderr),
+		hookRunner: NewHookRunner(log.With().Str("component", "hooks").Logger(), exec, stdout, stderr),
+	}
+}
+
+// CreateSession creates a new session or recycles an existing one.
+func (s *Service) CreateSession(ctx context.Context, opts CreateOptions) (*session.Session, error) {
+	s.log.Info().Str("name", opts.Name).Str("remote", opts.Remote).Msg("creating session")
+
+	remote := opts.Remote
+	if remote == "" {
+		var err error
+		remote, err = s.DetectRemote(ctx, ".")
+		if err != nil {
+			return nil, fmt.Errorf("detect remote: %w", err)
+		}
+		s.log.Debug().Str("remote", remote).Msg("detected remote")
+	}
+
+	// Check for recyclable session
+	recyclable, err := s.sessions.FindRecyclable(ctx, remote)
+	if err != nil && !errors.Is(err, session.ErrNoRecyclable) {
+		return nil, fmt.Errorf("find recyclable: %w", err)
+	}
+
+	var sess session.Session
+
+	if err == nil {
+		// Recycle existing session
+		s.log.Debug().Str("session_id", recyclable.ID).Msg("found recyclable session")
+
+		if err := s.recycler.Recycle(ctx, recyclable.Path, s.config.Commands.Recycle); err != nil {
+			return nil, fmt.Errorf("recycle session %s: %w", recyclable.ID, err)
+		}
+
+		sess = recyclable
+		sess.Name = opts.Name
+		sess.State = session.StateActive
+		sess.UpdatedAt = time.Now()
+	} else {
+		// Create new session
+		id := generateID()
+		repoName := extractRepoName(remote)
+		path := filepath.Join(s.config.ReposDir(), fmt.Sprintf("%s-%s-%s", repoName, opts.Name, id))
+
+		s.log.Info().Str("remote", remote).Str("dest", path).Msg("cloning repository")
+
+		if err := s.git.Clone(ctx, remote, path); err != nil {
+			return nil, fmt.Errorf("clone repository: %w", err)
+		}
+
+		s.log.Debug().Msg("clone complete")
+
+		now := time.Now()
+		sess = session.Session{
+			ID:        id,
+			Name:      opts.Name,
+			Path:      path,
+			Remote:    remote,
+			State:     session.StateActive,
+			CreatedAt: now,
+			UpdatedAt: now,
+		}
+	}
+
+	// Run hooks
+	if err := s.hookRunner.RunHooks(ctx, s.config.Hooks, remote, sess.Path); err != nil {
+		return nil, fmt.Errorf("run hooks: %w", err)
+	}
+
+	// Save session
+	if err := s.sessions.Save(ctx, sess); err != nil {
+		return nil, fmt.Errorf("save session: %w", err)
+	}
+
+	// Spawn terminal
+	if len(s.config.Commands.Spawn) > 0 {
+		data := SpawnData{
+			Path:   sess.Path,
+			Name:   sess.Name,
+			Prompt: opts.Prompt,
+		}
+		if err := s.spawner.Spawn(ctx, s.config.Commands.Spawn, data); err != nil {
+			return nil, fmt.Errorf("spawn terminal: %w", err)
+		}
+	}
+
+	s.log.Info().Str("session_id", sess.ID).Str("path", sess.Path).Msg("session created")
+
+	return &sess, nil
+}
+
+// ListSessions returns all sessions.
+func (s *Service) ListSessions(ctx context.Context) ([]session.Session, error) {
+	return s.sessions.List(ctx)
+}
+
+// GetSession returns a session by ID.
+func (s *Service) GetSession(ctx context.Context, id string) (session.Session, error) {
+	return s.sessions.Get(ctx, id)
+}
+
+// RecycleSession marks a session for recycling.
+func (s *Service) RecycleSession(ctx context.Context, id string) error {
+	sess, err := s.sessions.Get(ctx, id)
+	if err != nil {
+		return fmt.Errorf("get session: %w", err)
+	}
+
+	if !sess.CanRecycle() {
+		return fmt.Errorf("session %s cannot be recycled (state: %s)", id, sess.State)
+	}
+
+	sess.MarkRecycled(time.Now())
+
+	if err := s.sessions.Save(ctx, sess); err != nil {
+		return fmt.Errorf("save session: %w", err)
+	}
+
+	s.log.Info().Str("session_id", id).Msg("session marked for recycling")
+
+	return nil
+}
+
+// DeleteSession removes a session and its directory.
+func (s *Service) DeleteSession(ctx context.Context, id string) error {
+	sess, err := s.sessions.Get(ctx, id)
+	if err != nil {
+		return fmt.Errorf("get session: %w", err)
+	}
+
+	s.log.Info().Str("session_id", id).Str("path", sess.Path).Msg("deleting session")
+
+	// Remove directory
+	if err := os.RemoveAll(sess.Path); err != nil {
+		return fmt.Errorf("remove directory: %w", err)
+	}
+
+	// Delete from store
+	if err := s.sessions.Delete(ctx, id); err != nil {
+		return fmt.Errorf("delete session: %w", err)
+	}
+
+	return nil
+}
+
+// Prune removes all recycled sessions and their directories.
+func (s *Service) Prune(ctx context.Context) (int, error) {
+	s.log.Info().Msg("pruning recycled sessions")
+
+	sessions, err := s.sessions.List(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("list sessions: %w", err)
+	}
+
+	count := 0
+	for _, sess := range sessions {
+		if sess.State != session.StateRecycled {
+			continue
+		}
+
+		if err := s.DeleteSession(ctx, sess.ID); err != nil {
+			s.log.Warn().Err(err).Str("session_id", sess.ID).Msg("failed to prune session")
+			continue
+		}
+
+		count++
+	}
+
+	s.log.Info().Int("count", count).Msg("prune complete")
+
+	return count, nil
+}
+
+// DetectRemote gets the git remote URL from the specified directory.
+func (s *Service) DetectRemote(ctx context.Context, dir string) (string, error) {
+	return s.git.RemoteURL(ctx, dir)
+}
+
+// generateID creates a 6-character random alphanumeric session ID.
+func generateID() string {
+	const chars = "abcdefghijklmnopqrstuvwxyz0123456789"
+	b := make([]byte, 6)
+	for i := range b {
+		b[i] = chars[rand.Intn(len(chars))]
+	}
+	return string(b)
+}
+
+// extractRepoName extracts the repository name from a git remote URL.
+// Handles both SSH (git@github.com:user/repo.git) and HTTPS (https://github.com/user/repo.git) formats.
+func extractRepoName(remote string) string {
+	// Remove .git suffix
+	remote = strings.TrimSuffix(remote, ".git")
+
+	// Handle SSH format: git@github.com:user/repo
+	if idx := strings.LastIndex(remote, "/"); idx != -1 {
+		return remote[idx+1:]
+	}
+
+	// Handle case where : is the separator (git@github.com:user/repo)
+	if idx := strings.LastIndex(remote, ":"); idx != -1 {
+		part := remote[idx+1:]
+		if slashIdx := strings.LastIndex(part, "/"); slashIdx != -1 {
+			return part[slashIdx+1:]
+		}
+		return part
+	}
+
+	return remote
+}

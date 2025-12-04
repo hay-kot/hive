@@ -2,11 +2,19 @@ git_path: git
 
 commands:
   spawn:
-    - 'wezterm cli spawn --cwd "{{ .Path }}" -- claude --prompt "{{ .Prompt }}"'
+    - |
+      new_pane_id=$(wezterm cli spawn --cwd "{{ .Path }}") \
+      && echo "claude '{{ .Prompt }}'" | wezterm cli send-text --no-paste --pane-id="$new_pane_id"
   recycle:
     - git reset --hard
     - git checkout main
     - git pull
+
+hooks:
+  - pattern: "**recipinned**"
+    commands:
+      - mise trust
+      - task dep:sync
 
 keybindings:
   r:
@@ -21,3 +29,4 @@ keybindings:
   O:
     help: open remote
     sh: "open {{ .Remote }}"
+

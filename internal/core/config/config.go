@@ -20,7 +20,16 @@ type Config struct {
 	Commands    Commands              `yaml:"commands"`
 	GitPath     string                `yaml:"git_path"`
 	Keybindings map[string]Keybinding `yaml:"keybindings"`
+	Hooks       []Hook                `yaml:"hooks"`
 	DataDir     string                `yaml:"-"` // set by caller, not from config file
+}
+
+// Hook defines setup commands for specific repositories.
+type Hook struct {
+	// Pattern matches against remote URL (supports glob patterns).
+	Pattern string `yaml:"pattern"`
+	// Commands to run in the session directory after clone/recycle.
+	Commands []string `yaml:"commands"`
 }
 
 // Commands defines the shell commands used by hive.

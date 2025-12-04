@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 
 	"github.com/hay-kot/hive/internal/core/config"
+	"github.com/hay-kot/hive/internal/hive"
 )
 
 // Flags holds global flags shared across all commands
@@ -16,6 +17,9 @@ type Flags struct {
 
 	// Config is loaded in the Before hook and available to all commands
 	Config *config.Config
+
+	// Service is the hive service for orchestrating operations
+	Service *hive.Service
 }
 
 // DefaultConfigPath returns the default config file path using XDG_CONFIG_HOME.

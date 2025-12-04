@@ -2,6 +2,7 @@ package executil
 
 import (
 	"context"
+	"io"
 	"sync"
 )
 
@@ -64,4 +65,22 @@ func (e *RecordingExecutor) Reset() {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.Commands = nil
+}
+
+// RunStream records the command and writes configured output to writers.
+func (e *RecordingExecutor) RunStream(ctx context.Context, stdout, stderr io.Writer, cmd string, args ...string) error {
+	out, err := e.record("", cmd, args...)
+	if stdout != nil && len(out) > 0 {
+		_, _ = stdout.Write(out)
+	}
+	return err
+}
+
+// RunDirStream records the command with directory and writes configured output to writers.
+func (e *RecordingExecutor) RunDirStream(ctx context.Context, dir string, stdout, stderr io.Writer, cmd string, args ...string) error {
+	out, err := e.record(dir, cmd, args...)
+	if stdout != nil && len(out) > 0 {
+		_, _ = stdout.Write(out)
+	}
+	return err
 }

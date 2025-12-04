@@ -13,7 +13,11 @@ import (
 
 	"github.com/hay-kot/hive/internal/commands"
 	"github.com/hay-kot/hive/internal/core/config"
+	"github.com/hay-kot/hive/internal/core/git"
+	"github.com/hay-kot/hive/internal/hive"
 	"github.com/hay-kot/hive/internal/printer"
+	"github.com/hay-kot/hive/internal/store/jsonfile"
+	"github.com/hay-kot/hive/pkg/executil"
 )
 
 var (
@@ -120,12 +124,20 @@ func main() {
 			}
 			flags.Config = cfg
 
+			// Create service
+			store := jsonfile.New(cfg.SessionsFile())
+			exec := &executil.RealExecutor{}
+			gitExec := git.NewExecutor(cfg.GitPath, exec)
+			logger := log.With().Str("component", "hive").Logger()
+			flags.Service = hive.New(store, gitExec, cfg, exec, logger, os.Stdout, os.Stderr)
+
 			return ctx, nil
 		},
 	}
 	app = commands.NewNewCmd(flags).Register(app)
 	app = commands.NewTuiCmd(flags).Register(app)
 	app = commands.NewLsCmd(flags).Register(app)
+	app = commands.NewPruneCmd(flags).Register(app)
 
 	exitCode := 0
 	if err := app.Run(ctx, os.Args); err != nil {

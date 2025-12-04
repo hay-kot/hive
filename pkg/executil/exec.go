@@ -4,6 +4,7 @@ package executil
 import (
 	"context"
 	"fmt"
+	"io"
 	"os/exec"
 )
 
@@ -13,6 +14,10 @@ type Executor interface {
 	Run(ctx context.Context, cmd string, args ...string) ([]byte, error)
 	// RunDir executes a command in a specific directory.
 	RunDir(ctx context.Context, dir, cmd string, args ...string) ([]byte, error)
+	// RunStream executes a command and streams stdout/stderr to the provided writers.
+	RunStream(ctx context.Context, stdout, stderr io.Writer, cmd string, args ...string) error
+	// RunDirStream executes a command in a specific directory and streams output.
+	RunDirStream(ctx context.Context, dir string, stdout, stderr io.Writer, cmd string, args ...string) error
 }
 
 // RealExecutor calls actual shell commands.
@@ -36,4 +41,27 @@ func (e *RealExecutor) RunDir(ctx context.Context, dir, cmd string, args ...stri
 		return out, fmt.Errorf("exec %s in %s: %w", cmd, dir, err)
 	}
 	return out, nil
+}
+
+// RunStream executes a command and streams stdout/stderr to the provided writers.
+func (e *RealExecutor) RunStream(ctx context.Context, stdout, stderr io.Writer, cmd string, args ...string) error {
+	c := exec.CommandContext(ctx, cmd, args...)
+	c.Stdout = stdout
+	c.Stderr = stderr
+	if err := c.Run(); err != nil {
+		return fmt.Errorf("exec %s: %w", cmd, err)
+	}
+	return nil
+}
+
+// RunDirStream executes a command in a specific directory and streams output.
+func (e *RealExecutor) RunDirStream(ctx context.Context, dir string, stdout, stderr io.Writer, cmd string, args ...string) error {
+	c := exec.CommandContext(ctx, cmd, args...)
+	c.Dir = dir
+	c.Stdout = stdout
+	c.Stderr = stderr
+	if err := c.Run(); err != nil {
+		return fmt.Errorf("exec %s in %s: %w", cmd, dir, err)
+	}
+	return nil
 }
