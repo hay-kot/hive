@@ -131,11 +131,8 @@ func (d SessionDelegate) renderGitStatus(path string) string {
 	// Format: branch (+N -N) • clean/uncommitted changes
 	branch := gitBranchStyle.Render(status.Branch)
 
-	// Diff stats (only show if there are changes)
-	stats := ""
-	if status.Additions > 0 || status.Deletions > 0 {
-		stats = gitBranchStyle.Render(fmt.Sprintf(" (+%d -%d)", status.Additions, status.Deletions))
-	}
+	// Diff stats (always show)
+	stats := gitBranchStyle.Render(fmt.Sprintf(" (+%d -%d)", status.Additions, status.Deletions))
 
 	// Clean/dirty indicator
 	var indicator string
