@@ -11,10 +11,10 @@ var (
 	colorGreen  = lipgloss.Color("#9ece6a") // green
 	colorYellow = lipgloss.Color("#e0af68") // yellow
 	colorBlue   = lipgloss.Color("#7aa2f7") // blue
-	colorPurple = lipgloss.Color("#bb9af7") // purple
-	colorCyan   = lipgloss.Color("#7dcfff") // cyan
-	colorGray   = lipgloss.Color("#565f89") // comment
-	colorWhite  = lipgloss.Color("#c0caf5") // foreground
+	/* colorPurple = lipgloss.Color("#bb9af7") // purple */
+	/* colorCyan   = lipgloss.Color("#7dcfff") // cyan */
+	colorGray  = lipgloss.Color("#565f89") // comment
+	colorWhite = lipgloss.Color("#c0caf5") // foreground
 )
 
 // Styles used for rendering the TUI (lipgloss v1 for bubbles compatibility).
