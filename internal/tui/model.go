@@ -3,7 +3,9 @@ package tui
 import (
 	"context"
 
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/list"
+	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/hay-kot/hive/internal/core/config"
@@ -17,20 +19,23 @@ type UIState int
 const (
 	stateNormal UIState = iota
 	stateConfirming
+	stateLoading
 )
 
 // Model is the main Bubble Tea model for the TUI.
 type Model struct {
-	service  *hive.Service
-	list     list.Model
-	handler  *KeybindingHandler
-	state    UIState
-	modal    Modal
-	pending  Action
-	width    int
-	height   int
-	err      error
-	quitting bool
+	service        *hive.Service
+	list           list.Model
+	handler        *KeybindingHandler
+	state          UIState
+	modal          Modal
+	pending        Action
+	width          int
+	height         int
+	err            error
+	spinner        spinner.Model
+	loadingMessage string
+	quitting       bool
 }
 
 // sessionsLoadedMsg is sent when sessions are loaded.
@@ -55,17 +60,27 @@ func New(service *hive.Service, cfg *config.Config) Model {
 
 	handler := NewKeybindingHandler(cfg.Keybindings, service)
 
+	// Add custom keybindings to list help
+	l.AdditionalShortHelpKeys = func() []key.Binding {
+		return handler.KeyBindings()
+	}
+
+	s := spinner.New()
+	s.Spinner = spinner.Dot
+	s.Style = spinnerStyle
+
 	return Model{
 		service: service,
 		list:    l,
 		handler: handler,
 		state:   stateNormal,
+		spinner: s,
 	}
 }
 
 // Init initializes the model.
 func (m Model) Init() tea.Cmd {
-	return m.loadSessions()
+	return tea.Batch(m.loadSessions(), m.spinner.Tick)
 }
 
 // loadSessions returns a command that loads sessions from the service.
@@ -90,12 +105,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		m.list.SetSize(msg.Width, msg.Height-2) // Leave room for help bar
+		m.list.SetSize(msg.Width, msg.Height)
 		return m, nil
 
 	case sessionsLoadedMsg:
 		if msg.err != nil {
 			m.err = msg.err
+			m.state = stateNormal
 			return m, nil
 		}
 		items := make([]list.Item, len(msg.sessions))
@@ -103,11 +119,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			items[i] = SessionItem{Session: s}
 		}
 		m.list.SetItems(items)
+		m.state = stateNormal
 		return m, nil
 
 	case actionCompleteMsg:
 		if msg.err != nil {
 			m.err = msg.err
+			m.state = stateNormal
+			m.pending = Action{}
+			return m, nil
 		}
 		m.state = stateNormal
 		m.pending = Action{}
@@ -116,6 +136,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyMsg:
 		return m.handleKey(msg)
+
+	case spinner.TickMsg:
+		var cmd tea.Cmd
+		m.spinner, cmd = m.spinner.Update(msg)
+		return m, cmd
 	}
 
 	var cmd tea.Cmd
@@ -164,6 +189,9 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.modal = NewModal("Confirm", action.Confirm)
 			return m, nil
 		}
+		// Show loading state for action
+		m.state = stateLoading
+		m.loadingMessage = "Processing..."
 		return m, m.executeAction(action)
 	}
 
@@ -192,14 +220,22 @@ func (m Model) View() string {
 		return ""
 	}
 
-	if m.err != nil {
-		return errorStyle.Render("Error: " + m.err.Error())
-	}
-
 	// Build main view
-	listView := m.list.View()
-	helpBar := helpStyle.Render("[q] quit  " + m.handler.HelpString())
-	mainView := lipgloss.JoinVertical(lipgloss.Left, listView, helpBar)
+	mainView := m.list.View()
+
+	// Overlay loading spinner if loading
+	if m.state == stateLoading {
+		w, h := m.width, m.height
+		if w == 0 {
+			w = 80
+		}
+		if h == 0 {
+			h = 24
+		}
+		loadingView := lipgloss.JoinHorizontal(lipgloss.Left, m.spinner.View(), " "+m.loadingMessage)
+		modal := NewModal("", loadingView)
+		return modal.Overlay(mainView, w, h)
+	}
 
 	// Overlay modal if confirming
 	if m.state == stateConfirming {

@@ -10,7 +10,6 @@ import (
 var (
 	colorGreen  = lipgloss.Color("#a6e3a1")
 	colorYellow = lipgloss.Color("#f9e2af")
-	colorRed    = lipgloss.Color("#f38ba8")
 	colorBlue   = lipgloss.Color("#89b4fa")
 	colorGray   = lipgloss.Color("#6c7086")
 	colorWhite  = lipgloss.Color("#cdd6f4")
@@ -32,10 +31,6 @@ var (
 	recycledStyle = lipgloss.NewStyle().
 			Foreground(colorYellow)
 
-	// Help text style.
-	helpStyle = lipgloss.NewStyle().
-			Foreground(colorGray)
-
 	// Selected item style.
 	selectedStyle = lipgloss.NewStyle().
 			Foreground(colorWhite).
@@ -44,10 +39,6 @@ var (
 	// Normal item style.
 	normalStyle = lipgloss.NewStyle().
 			Foreground(colorGray)
-
-	// Error message style.
-	errorStyle = lipgloss.NewStyle().
-			Foreground(colorRed)
 )
 
 // Modal styles using lipgloss v2 for canvas/layer support.
@@ -64,4 +55,8 @@ var (
 	modalHelpStyle = lipglossv2.NewStyle().
 			Foreground(lipglossv2.Color("#6c7086")).
 			MarginTop(1)
+
+	// Spinner style.
+	spinnerStyle = lipgloss.NewStyle().
+			Foreground(colorBlue)
 )

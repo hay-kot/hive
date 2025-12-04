@@ -112,6 +112,7 @@ func (s *Service) CreateSession(ctx context.Context, opts CreateOptions) (*sessi
 			Name:      opts.Name,
 			Path:      path,
 			Remote:    remote,
+			Prompt:    opts.Prompt,
 			State:     session.StateActive,
 			CreatedAt: now,
 			UpdatedAt: now,

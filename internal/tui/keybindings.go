@@ -3,9 +3,12 @@ package tui
 import (
 	"context"
 	"fmt"
+	"maps"
 	"os/exec"
+	"slices"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/hay-kot/hive/internal/core/config"
 	"github.com/hay-kot/hive/internal/core/session"
 	"github.com/hay-kot/hive/internal/hive"
@@ -135,10 +138,14 @@ func (h *KeybindingHandler) executeShell(_ context.Context, cmd string) error {
 	return c.Run()
 }
 
-// HelpEntries returns all configured keybindings for display.
+// HelpEntries returns all configured keybindings for display, sorted by key.
 func (h *KeybindingHandler) HelpEntries() []string {
+	// Get sorted keys for consistent ordering
+	keys := slices.Sorted(maps.Keys(h.keybindings))
+
 	entries := make([]string, 0, len(h.keybindings))
-	for key, kb := range h.keybindings {
+	for _, key := range keys {
+		kb := h.keybindings[key]
 		help := kb.Help
 		if help == "" && kb.Action != "" {
 			help = kb.Action
@@ -155,4 +162,28 @@ func (h *KeybindingHandler) HelpEntries() []string {
 func (h *KeybindingHandler) HelpString() string {
 	entries := h.HelpEntries()
 	return strings.Join(entries, "  ")
+}
+
+// KeyBindings returns key.Binding objects for integration with bubbles help system.
+func (h *KeybindingHandler) KeyBindings() []key.Binding {
+	keys := slices.Sorted(maps.Keys(h.keybindings))
+	bindings := make([]key.Binding, 0, len(keys))
+
+	for _, k := range keys {
+		kb := h.keybindings[k]
+		help := kb.Help
+		if help == "" && kb.Action != "" {
+			help = kb.Action
+		}
+		if help == "" {
+			help = "shell"
+		}
+
+		bindings = append(bindings, key.NewBinding(
+			key.WithKeys(k),
+			key.WithHelp(k, help),
+		))
+	}
+
+	return bindings
 }

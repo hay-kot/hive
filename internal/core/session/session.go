@@ -17,6 +17,7 @@ type Session struct {
 	Name      string    `json:"name"`
 	Path      string    `json:"path"`
 	Remote    string    `json:"remote"`
+	Prompt    string    `json:"prompt,omitempty"`
 	State     State     `json:"state"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`

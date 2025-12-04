@@ -52,7 +52,7 @@ func NewSessionDelegate() SessionDelegate {
 
 // Height returns the height of each item.
 func (d SessionDelegate) Height() int {
-	return 2
+	return 3
 }
 
 // Spacing returns the spacing between items.
@@ -92,6 +92,18 @@ func (d SessionDelegate) Render(w io.Writer, m list.Model, index int, item list.
 	state := stateStyle.Render(string(s.State))
 	desc := fmt.Sprintf("%s  %s", state, s.Path)
 
+	// Build prompt line if present
+	prompt := ""
+	if s.Prompt != "" {
+		// Truncate long prompts
+		maxPromptLen := 80
+		displayPrompt := s.Prompt
+		if len(displayPrompt) > maxPromptLen {
+			displayPrompt = displayPrompt[:maxPromptLen-3] + "..."
+		}
+		prompt = fmt.Sprintf("  %s", lipgloss.NewStyle().Foreground(colorGray).Render(displayPrompt))
+	}
+
 	// Apply selection styling
 	var titleStyle lipgloss.Style
 	if isSelected {
@@ -104,5 +116,8 @@ func (d SessionDelegate) Render(w io.Writer, m list.Model, index int, item list.
 
 	// Write to output
 	_, _ = fmt.Fprintf(w, "%s\n", titleStyle.Render(title))
-	_, _ = fmt.Fprintf(w, "  %s", desc)
+	_, _ = fmt.Fprintf(w, "  %s\n", desc)
+	if prompt != "" {
+		_, _ = fmt.Fprint(w, prompt)
+	}
 }
