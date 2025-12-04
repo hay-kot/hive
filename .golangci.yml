@@ -1,0 +1,82 @@
+version: "2"
+linters:
+  default: none
+  enable:
+    - asciicheck
+    - bodyclose
+    - depguard
+    - dogsled
+    - errcheck
+    - errorlint
+    - exhaustive
+    - gochecknoinits
+    - goconst
+    - gocritic
+    - gocyclo
+    - goprintffuncname
+    - govet
+    - ineffassign
+    - misspell
+    - nakedret
+    - revive
+    - staticcheck
+    - tagalign
+    - testifylint
+    - unconvert
+    - unused
+    - whitespace
+    - zerologlint
+  settings:
+    depguard:
+      rules:
+        main:
+          deny:
+            - pkg: io/util
+              desc: |
+                Deprecated: As of Go 1.16, the same functionality is now provided by
+                package io or package os, and those implementations should be
+                preferred in new code. See the specific function documentation for
+                details.
+            - pkg: github.com/pkg/errors
+              desc: Should be replaced by standard lib errors package
+    exhaustive:
+      default-signifies-exhaustive: true
+    goconst:
+      min-len: 5
+      min-occurrences: 5
+    gocritic:
+      enabled-checks:
+        - ruleguard
+    revive:
+      confidence: 3
+      severity: warning
+    tagalign:
+      order:
+        - json
+        - schema
+        - yaml
+        - yml
+        - toml
+        - validate
+    testifylint:
+      enable-all: true
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+issues:
+  fix: false
+formatters:
+  enable:
+    - gofumpt
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+  settings:
+    gofumpt:
+      extra-rules: false
