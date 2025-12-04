@@ -121,7 +121,7 @@ func (h *KeybindingHandler) Resolve(key string, sess session.Session) (Action, b
 func (h *KeybindingHandler) Execute(ctx context.Context, action Action) error {
 	switch action.Type {
 	case ActionTypeRecycle:
-		return h.service.RecycleSession(ctx, action.SessionID)
+		return h.service.RecycleSessionSilent(ctx, action.SessionID)
 	case ActionTypeDelete:
 		return h.service.DeleteSession(ctx, action.SessionID)
 	case ActionTypeShell:

@@ -42,3 +42,21 @@ func (r *Recycler) Recycle(ctx context.Context, path string, commands []string) 
 	r.log.Debug().Msg("recycle complete")
 	return nil
 }
+
+// RecycleSilent executes recycle commands without streaming output.
+// Output is captured and included in the error message if a command fails.
+func (r *Recycler) RecycleSilent(ctx context.Context, path string, commands []string) error {
+	r.log.Debug().Str("path", path).Msg("recycling environment (silent)")
+
+	for _, cmd := range commands {
+		r.log.Debug().Str("command", cmd).Msg("executing recycle command")
+
+		output, err := r.executor.RunDir(ctx, path, "sh", "-c", cmd)
+		if err != nil {
+			return fmt.Errorf("execute recycle command %q: %w\noutput: %s", cmd, err, string(output))
+		}
+	}
+
+	r.log.Debug().Msg("recycle complete")
+	return nil
+}

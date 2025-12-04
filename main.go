@@ -36,7 +36,7 @@ func build() string {
 	return fmt.Sprintf("%s (%s) %s", version, short, date)
 }
 
-func setupLogger(level string, logFile string) error {
+func setupLogger(level string, logFile string, fileOnly bool) error {
 	parsedLevel, err := zerolog.ParseLevel(level)
 	if err != nil {
 		return fmt.Errorf("failed to parse log level: %w", err)
@@ -57,11 +57,19 @@ func setupLogger(level string, logFile string) error {
 			return fmt.Errorf("failed to open log file: %w", err)
 		}
 
-		// Write to both console and file
-		output = io.MultiWriter(
-			zerolog.ConsoleWriter{Out: os.Stderr},
-			file,
-		)
+		if fileOnly {
+			// Write only to file (for TUI mode)
+			output = file
+		} else {
+			// Write to both console and file
+			output = io.MultiWriter(
+				zerolog.ConsoleWriter{Out: os.Stderr},
+				file,
+			)
+		}
+	} else if fileOnly {
+		// TUI mode with no explicit log file - discard logs
+		output = io.Discard
 	}
 
 	log.Logger = log.Output(output).Level(parsedLevel)
@@ -70,7 +78,7 @@ func setupLogger(level string, logFile string) error {
 }
 
 func main() {
-	if err := setupLogger("info", ""); err != nil {
+	if err := setupLogger("info", "", false); err != nil {
 		panic(err)
 	}
 
@@ -122,7 +130,16 @@ Run 'hive new' to create a new session from the current repository.`,
 			},
 		},
 		Before: func(ctx context.Context, c *cli.Command) (context.Context, error) {
-			if err := setupLogger(flags.LogLevel, flags.LogFile); err != nil {
+			// Detect TUI mode: either "tui" subcommand or no subcommand (default action)
+			isTUI := len(c.Args().Slice()) == 0 || c.Args().First() == "tui"
+
+			// In TUI mode, use file logging to avoid mangling the display
+			logFile := flags.LogFile
+			if isTUI && logFile == "" {
+				logFile = commands.DefaultLogFile()
+			}
+
+			if err := setupLogger(flags.LogLevel, logFile, isTUI); err != nil {
 				return ctx, err
 			}
 
