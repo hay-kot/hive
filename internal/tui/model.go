@@ -23,6 +23,12 @@ const (
 	stateLoading
 )
 
+// Options configures the TUI behavior.
+type Options struct {
+	ShowAll     bool   // Show all sessions vs only local repository
+	LocalRemote string // Remote URL of current directory (empty if not in git repo)
+}
+
 // Model is the main Bubble Tea model for the TUI.
 type Model struct {
 	service        *hive.Service
@@ -39,6 +45,11 @@ type Model struct {
 	quitting       bool
 	gitStatuses    *kv.Store[string, GitStatus]
 	gitWorkers     int
+
+	// Filtering
+	showAll     bool              // Toggle for showing all vs local sessions
+	localRemote string            // Remote URL of current directory
+	allSessions []session.Session // All sessions (unfiltered)
 }
 
 // sessionsLoadedMsg is sent when sessions are loaded.
@@ -53,7 +64,7 @@ type actionCompleteMsg struct {
 }
 
 // New creates a new TUI model.
-func New(service *hive.Service, cfg *config.Config) Model {
+func New(service *hive.Service, cfg *config.Config, opts Options) Model {
 	gitStatuses := kv.New[string, GitStatus]()
 
 	delegate := NewSessionDelegate()
@@ -68,6 +79,9 @@ func New(service *hive.Service, cfg *config.Config) Model {
 
 	handler := NewKeybindingHandler(cfg.Keybindings, service)
 
+	// If no local remote detected, force show all
+	showAll := opts.ShowAll || opts.LocalRemote == ""
+
 	// Add custom keybindings to list help
 	l.AdditionalShortHelpKeys = func() []key.Binding {
 		bindings := handler.KeyBindings()
@@ -75,6 +89,11 @@ func New(service *hive.Service, cfg *config.Config) Model {
 		bindings = append(bindings, key.NewBinding(
 			key.WithKeys("g"),
 			key.WithHelp("g", "refresh git"),
+		))
+		// Add toggle all keybinding
+		bindings = append(bindings, key.NewBinding(
+			key.WithKeys("a"),
+			key.WithHelp("a", "toggle all"),
 		))
 		return bindings
 	}
@@ -91,6 +110,8 @@ func New(service *hive.Service, cfg *config.Config) Model {
 		spinner:     s,
 		gitStatuses: gitStatuses,
 		gitWorkers:  cfg.Git.StatusWorkers,
+		showAll:     showAll,
+		localRemote: opts.LocalRemote,
 	}
 }
 
@@ -135,18 +156,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.state = stateNormal
 			return m, nil
 		}
-		items := make([]list.Item, len(msg.sessions))
-		paths := make([]string, len(msg.sessions))
-		for i, s := range msg.sessions {
-			items[i] = SessionItem{Session: s}
-			paths[i] = s.Path
-			// Mark as loading
-			m.gitStatuses.Set(s.Path, GitStatus{IsLoading: true})
-		}
-		m.list.SetItems(items)
-		m.state = stateNormal
-		// Fetch git status for all sessions
-		return m, fetchGitStatusBatch(m.service.Git(), paths, m.gitWorkers)
+		// Store all sessions for filtering
+		m.allSessions = msg.sessions
+		// Apply filter and update list
+		return m.applyFilter()
 
 	case gitStatusBatchCompleteMsg:
 		m.gitStatuses.SetBatch(msg.Results)
@@ -204,6 +217,13 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "g":
 		// Refresh git status for all sessions
 		return m, m.refreshGitStatuses()
+	case "a":
+		// Toggle between local and all sessions
+		if m.localRemote != "" {
+			m.showAll = !m.showAll
+			return m.applyFilter()
+		}
+		return m, nil
 	}
 
 	// Check for configured keybindings
@@ -245,6 +265,42 @@ func (m Model) selectedSession() *session.Session {
 		return nil
 	}
 	return &sessionItem.Session
+}
+
+// applyFilter filters sessions based on showAll flag and updates the list.
+func (m Model) applyFilter() (tea.Model, tea.Cmd) {
+	var filtered []session.Session
+	if m.showAll || m.localRemote == "" {
+		filtered = m.allSessions
+	} else {
+		for _, s := range m.allSessions {
+			if s.Remote == m.localRemote {
+				filtered = append(filtered, s)
+			}
+		}
+	}
+
+	items := make([]list.Item, len(filtered))
+	paths := make([]string, len(filtered))
+	for i, s := range filtered {
+		items[i] = SessionItem{Session: s}
+		paths[i] = s.Path
+		m.gitStatuses.Set(s.Path, GitStatus{IsLoading: true})
+	}
+	m.list.SetItems(items)
+	m.state = stateNormal
+
+	// Update title to show filter state
+	if m.showAll || m.localRemote == "" {
+		m.list.Title = "Sessions (all)"
+	} else {
+		m.list.Title = "Sessions (local)"
+	}
+
+	if len(paths) == 0 {
+		return m, nil
+	}
+	return m, fetchGitStatusBatch(m.service.Git(), paths, m.gitWorkers)
 }
 
 // refreshGitStatuses returns a command that refreshes git status for all sessions.
