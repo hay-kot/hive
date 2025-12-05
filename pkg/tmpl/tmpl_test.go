@@ -63,6 +63,36 @@ func TestRender(t *testing.T) {
 			data: map[string]string{"Name": ""},
 			want: "prefixsuffix",
 		},
+		{
+			name: "shq function with spaces",
+			tmpl: "echo {{ .Prompt | shq }}",
+			data: map[string]string{"Prompt": "hello world"},
+			want: "echo 'hello world'",
+		},
+		{
+			name: "shq function with single quotes",
+			tmpl: "echo {{ .Prompt | shq }}",
+			data: map[string]string{"Prompt": "it's a test"},
+			want: `echo 'it'\''s a test'`,
+		},
+		{
+			name: "shq function with double quotes",
+			tmpl: "echo {{ .Prompt | shq }}",
+			data: map[string]string{"Prompt": `say "hello"`},
+			want: `echo 'say "hello"'`,
+		},
+		{
+			name: "shq function with empty string",
+			tmpl: "echo {{ .Prompt | shq }}",
+			data: map[string]string{"Prompt": ""},
+			want: "echo ''",
+		},
+		{
+			name: "shq function with special chars",
+			tmpl: "echo {{ .Prompt | shq }}",
+			data: map[string]string{"Prompt": "$(whoami) && rm -rf /"},
+			want: "echo '$(whoami) && rm -rf /'",
+		},
 	}
 
 	for _, tt := range tests {

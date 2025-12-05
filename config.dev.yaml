@@ -4,7 +4,7 @@ commands:
   spawn:
     - |
       new_pane_id=$(wezterm cli spawn --cwd "{{ .Path }}") \
-      && echo "claude '{{ .Prompt }}'" | wezterm cli send-text --no-paste --pane-id="$new_pane_id"
+      && echo claude "{{ .Prompt | shq }}" | wezterm cli send-text --no-paste --pane-id="$new_pane_id"
   recycle:
     - git reset --hard
     - git checkout main
