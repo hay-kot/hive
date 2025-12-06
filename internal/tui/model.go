@@ -26,8 +26,9 @@ const (
 
 // Options configures the TUI behavior.
 type Options struct {
-	ShowAll     bool   // Show all sessions vs only local repository
-	LocalRemote string // Remote URL of current directory (empty if not in git repo)
+	ShowAll      bool   // Show all sessions vs only local repository
+	LocalRemote  string // Remote URL of current directory (empty if not in git repo)
+	HideRecycled bool   // Hide recycled sessions by default
 }
 
 // Model is the main Bubble Tea model for the TUI.
@@ -48,9 +49,10 @@ type Model struct {
 	gitWorkers     int
 
 	// Filtering
-	showAll     bool              // Toggle for showing all vs local sessions
-	localRemote string            // Remote URL of current directory
-	allSessions []session.Session // All sessions (unfiltered)
+	showAll      bool              // Toggle for showing all vs local sessions
+	localRemote  string            // Remote URL of current directory
+	hideRecycled bool              // Toggle for hiding recycled sessions
+	allSessions  []session.Session // All sessions (unfiltered)
 }
 
 // sessionsLoadedMsg is sent when sessions are loaded.
@@ -73,9 +75,12 @@ func New(service *hive.Service, cfg *config.Config, opts Options) Model {
 
 	l := list.New([]list.Item{}, delegate, 0, 0)
 	l.SetShowStatusBar(false)
-	l.SetFilteringEnabled(false)
+	l.SetFilteringEnabled(true)
 	l.Styles.Title = titleStyle
-	l.Styles.TitleBar = lipgloss.NewStyle().PaddingLeft(1)
+	l.Styles.TitleBar = lipgloss.NewStyle().PaddingLeft(1).PaddingBottom(1)
+	l.FilterInput.PromptStyle = lipgloss.NewStyle().PaddingLeft(1).Foreground(colorBlue).Bold(true)
+	l.FilterInput.Prompt = "Filter: "
+	l.Styles.FilterCursor = lipgloss.NewStyle().Foreground(colorBlue)
 
 	handler := NewKeybindingHandler(cfg.Keybindings, service)
 
@@ -83,7 +88,7 @@ func New(service *hive.Service, cfg *config.Config, opts Options) Model {
 	showAll := opts.ShowAll || opts.LocalRemote == ""
 
 	// Set initial title
-	l.Title = buildTitle(showAll)
+	l.Title = buildTitle(showAll, opts.HideRecycled)
 
 	// Add custom keybindings to list help
 	l.AdditionalShortHelpKeys = func() []key.Binding {
@@ -98,6 +103,11 @@ func New(service *hive.Service, cfg *config.Config, opts Options) Model {
 			key.WithKeys("a"),
 			key.WithHelp("a", "toggle all"),
 		))
+		// Add toggle recycled keybinding
+		bindings = append(bindings, key.NewBinding(
+			key.WithKeys("x"),
+			key.WithHelp("x", "toggle recycled"),
+		))
 		return bindings
 	}
 
@@ -106,15 +116,16 @@ func New(service *hive.Service, cfg *config.Config, opts Options) Model {
 	s.Style = spinnerStyle
 
 	return Model{
-		service:     service,
-		list:        l,
-		handler:     handler,
-		state:       stateNormal,
-		spinner:     s,
-		gitStatuses: gitStatuses,
-		gitWorkers:  cfg.Git.StatusWorkers,
-		showAll:     showAll,
-		localRemote: opts.LocalRemote,
+		service:      service,
+		list:         l,
+		handler:      handler,
+		state:        stateNormal,
+		spinner:      s,
+		gitStatuses:  gitStatuses,
+		gitWorkers:   cfg.Git.StatusWorkers,
+		showAll:      showAll,
+		localRemote:  opts.LocalRemote,
+		hideRecycled: opts.HideRecycled,
 	}
 }
 
@@ -219,6 +230,17 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// When filtering, pass most keys to the list except quit
+	if m.list.SettingFilter() {
+		if key == "ctrl+c" {
+			m.quitting = true
+			return m, tea.Quit
+		}
+		var cmd tea.Cmd
+		m.list, cmd = m.list.Update(msg)
+		return m, cmd
+	}
+
 	// Handle normal state
 	switch key {
 	case "q", "ctrl+c":
@@ -234,6 +256,10 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m.applyFilter()
 		}
 		return m, nil
+	case "x":
+		// Toggle recycled sessions visibility
+		m.hideRecycled = !m.hideRecycled
+		return m.applyFilter()
 	}
 
 	// Check for configured keybindings
@@ -277,17 +303,19 @@ func (m Model) selectedSession() *session.Session {
 	return &sessionItem.Session
 }
 
-// applyFilter filters sessions based on showAll flag and updates the list.
+// applyFilter filters sessions based on showAll and hideRecycled flags.
 func (m Model) applyFilter() (tea.Model, tea.Cmd) {
 	var filtered []session.Session
-	if m.showAll || m.localRemote == "" {
-		filtered = m.allSessions
-	} else {
-		for _, s := range m.allSessions {
-			if s.Remote == m.localRemote {
-				filtered = append(filtered, s)
-			}
+	for _, s := range m.allSessions {
+		// Filter by local remote
+		if !m.showAll && m.localRemote != "" && s.Remote != m.localRemote {
+			continue
 		}
+		// Filter recycled sessions
+		if m.hideRecycled && s.State == session.StateRecycled {
+			continue
+		}
+		filtered = append(filtered, s)
 	}
 
 	items := make([]list.Item, len(filtered))
@@ -301,7 +329,7 @@ func (m Model) applyFilter() (tea.Model, tea.Cmd) {
 	m.state = stateNormal
 
 	// Update title to show filter state
-	m.list.Title = buildTitle(m.showAll)
+	m.list.Title = buildTitle(m.showAll, m.hideRecycled)
 
 	if len(paths) == 0 {
 		return m, nil
@@ -373,11 +401,18 @@ func (m Model) View() string {
 }
 
 // buildTitle constructs the list title.
-func buildTitle(showAll bool) string {
+func buildTitle(showAll, hideRecycled bool) string {
+	var scope string
 	if showAll {
-		return "Sessions (all)"
+		scope = "all"
+	} else {
+		scope = "local"
 	}
-	return "Sessions (local)"
+
+	if hideRecycled {
+		return "Sessions (" + scope + ", active)"
+	}
+	return "Sessions (" + scope + ")"
 }
 
 // extractRepoName extracts the repository name from a git remote URL.

@@ -20,7 +20,8 @@ var (
 	// Title style for the list header.
 	titleStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(colorBlue).PaddingLeft(1).PaddingBottom(1)
+			Foreground(colorBlue).
+			PaddingLeft(1)
 
 	// Active session state style.
 	activeStyle = lipgloss.NewStyle().

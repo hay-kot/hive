@@ -20,8 +20,10 @@ type SessionItem struct {
 }
 
 // FilterValue returns the value used for filtering.
+// Format: "repoName sessionName" to allow searching by either.
 func (i SessionItem) FilterValue() string {
-	return i.Session.ID + " " + i.Session.Name
+	repoName := extractRepoName(i.Session.Remote)
+	return repoName + " " + i.Session.Name
 }
 
 // SessionDelegate handles rendering of session items in the list.
@@ -32,19 +34,23 @@ type SessionDelegate struct {
 
 // SessionDelegateStyles defines the styles for the delegate.
 type SessionDelegateStyles struct {
-	Normal   lipgloss.Style
-	Selected lipgloss.Style
-	Active   lipgloss.Style
-	Recycled lipgloss.Style
+	Normal        lipgloss.Style
+	Selected      lipgloss.Style
+	Active        lipgloss.Style
+	Recycled      lipgloss.Style
+	FilterMatch   lipgloss.Style
+	SelectedMatch lipgloss.Style
 }
 
 // DefaultSessionDelegateStyles returns the default styles.
 func DefaultSessionDelegateStyles() SessionDelegateStyles {
 	return SessionDelegateStyles{
-		Normal:   normalStyle,
-		Selected: selectedStyle,
-		Active:   activeStyle,
-		Recycled: recycledStyle,
+		Normal:        normalStyle,
+		Selected:      selectedStyle,
+		Active:        activeStyle,
+		Recycled:      recycledStyle,
+		FilterMatch:   lipgloss.NewStyle().Underline(true),
+		SelectedMatch: lipgloss.NewStyle().Underline(true).Foreground(colorBlue).Bold(true),
 	}
 }
 
@@ -93,22 +99,38 @@ func (d SessionDelegate) Render(w io.Writer, m list.Model, index int, item list.
 
 	stateTag := stateStyle.Render(fmt.Sprintf("[%s]", s.State))
 
-	// Determine name style based on selection
-	var nameStyle lipgloss.Style
-	if index == m.Index() {
+	// Determine styles based on selection
+	var nameStyle, matchStyle lipgloss.Style
+	if isSelected {
 		nameStyle = d.Styles.Selected
+		matchStyle = d.Styles.SelectedMatch
 	} else {
 		nameStyle = d.Styles.Normal
+		matchStyle = d.Styles.FilterMatch
+	}
+
+	// Get filter matches for highlighting
+	matches := m.MatchesForItem(index)
+	matchSet := make(map[int]bool, len(matches))
+	for _, idx := range matches {
+		matchSet[idx] = true
 	}
 
 	// Build title: <git icon> <repo> • <name> [state]
+	// FilterValue format is "repoName sessionName", so we map indices accordingly
 	var title string
+	repoName := extractRepoName(s.Remote)
+	repoOffset := 0
+	nameOffset := len([]rune(repoName)) + 1 // +1 for space separator
+
 	if s.Remote != "" {
-		repoName := extractRepoName(s.Remote)
-		repoPrefix := iconGit + "  " + nameStyle.Render(repoName)
-		title = fmt.Sprintf("%s %s %s %s", repoPrefix, iconDot, nameStyle.Render(s.Name), stateTag)
+		styledRepo := d.renderWithMatches(repoName, repoOffset, matchSet, nameStyle, matchStyle)
+		repoPrefix := iconGit + "  " + styledRepo
+		styledName := d.renderWithMatches(s.Name, nameOffset, matchSet, nameStyle, matchStyle)
+		title = fmt.Sprintf("%s %s %s %s", repoPrefix, iconDot, styledName, stateTag)
 	} else {
-		title = fmt.Sprintf("%s %s", nameStyle.Render(s.Name), stateTag)
+		styledName := d.renderWithMatches(s.Name, nameOffset, matchSet, nameStyle, matchStyle)
+		title = fmt.Sprintf("%s %s", styledName, stateTag)
 	}
 
 	// Build the description line: Path
@@ -141,6 +163,25 @@ func (d SessionDelegate) Render(w io.Writer, m list.Model, index int, item list.
 	_, _ = fmt.Fprintf(w, "%s%s\n", border, promptLine)
 	_, _ = fmt.Fprintf(w, "%s%s\n", border, path)
 	_, _ = fmt.Fprintf(w, "%s%s", border, gitLine)
+}
+
+// renderWithMatches renders text with underlined characters at matched positions.
+// offset is the starting position of this text within the FilterValue string.
+func (d SessionDelegate) renderWithMatches(text string, offset int, matchSet map[int]bool, baseStyle, matchStyle lipgloss.Style) string {
+	if len(matchSet) == 0 {
+		return baseStyle.Render(text)
+	}
+
+	runes := []rune(text)
+	var result string
+	for i, r := range runes {
+		if matchSet[offset+i] {
+			result += matchStyle.Render(string(r))
+		} else {
+			result += baseStyle.Render(string(r))
+		}
+	}
+	return result
 }
 
 // renderGitStatus returns the formatted git status line for a session path.

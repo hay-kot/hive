@@ -11,8 +11,9 @@ import (
 )
 
 type TuiCmd struct {
-	flags   *Flags
-	showAll bool
+	flags        *Flags
+	showAll      bool
+	hideRecycled bool
 }
 
 // NewTuiCmd creates a new tui command
@@ -42,6 +43,12 @@ Use --all to show all sessions, or press 'a' to toggle in the TUI.`,
 				Value:       false,
 				Destination: &cmd.showAll,
 			},
+			&cli.BoolFlag{
+				Name:        "hide-recycled",
+				Usage:       "Hide recycled sessions (toggle with 'x' in TUI)",
+				Value:       true,
+				Destination: &cmd.hideRecycled,
+			},
 		},
 		Action: cmd.run,
 	})
@@ -66,8 +73,9 @@ func (cmd *TuiCmd) run(ctx context.Context, _ *cli.Command) error {
 	}
 
 	opts := tui.Options{
-		ShowAll:     cmd.showAll,
-		LocalRemote: localRemote,
+		ShowAll:      cmd.showAll,
+		LocalRemote:  localRemote,
+		HideRecycled: cmd.hideRecycled,
 	}
 
 	m := tui.New(cmd.flags.Service, cmd.flags.Config, opts)
