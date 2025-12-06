@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/huh"
 	"github.com/hay-kot/hive/internal/hive"
 	"github.com/hay-kot/hive/internal/printer"
+	"github.com/hay-kot/hive/internal/styles"
 	"github.com/urfave/cli/v3"
 )
 
@@ -91,12 +92,16 @@ func (cmd *NewCmd) run(ctx context.Context, c *cli.Command) error {
 		return fmt.Errorf("create session: %w", err)
 	}
 
-	p.Successf("Created session %s at %s", sess.ID, sess.Path)
+	p.Success("Session created", sess.Path)
 
 	return nil
 }
 
 func (cmd *NewCmd) runForm() error {
+	// Print banner header
+	fmt.Println(styles.BannerStyle.Render(styles.Banner))
+	fmt.Println()
+
 	return huh.NewForm(
 		huh.NewGroup(
 			huh.NewInput().
@@ -109,7 +114,7 @@ func (cmd *NewCmd) runForm() error {
 				Description("AI prompt to pass to spawn command").
 				Value(&cmd.prompt),
 		),
-	).Run()
+	).WithTheme(styles.FormTheme()).Run()
 }
 
 func validateName(s string) error {

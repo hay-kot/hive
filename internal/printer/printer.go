@@ -8,12 +8,12 @@ import (
 	"strings"
 )
 
-// ANSI color codes
+// ANSI color codes (Tokyo Night palette)
 const (
 	ColorReset = "\033[0m"
 	ColorRed   = "\033[38;2;215;95;107m"  // #d75f6b
-	ColorGreen = "\033[38;2;34;197;94m"   // #22c55e
-	ColorGray  = "\033[38;2;163;163;163m" // #a3a3a3
+	ColorGreen = "\033[38;2;158;206;106m" // #9ece6a (Tokyo Night green)
+	ColorGray  = "\033[38;2;86;95;137m"   // #565f89 (Tokyo Night comment)
 	ColorBold  = "\033[1m"
 )
 
@@ -79,6 +79,14 @@ func (p *Printer) Errorf(format string, args ...interface{}) {
 func (p *Printer) Successf(format string, args ...interface{}) {
 	msg := fmt.Sprintf(format, args...)
 	_, _ = p.writer.Write([]byte(p.colorize(ColorGreen, Check+" "+msg) + "\n"))
+}
+
+// Success prints a success message with details on a separate line
+func (p *Printer) Success(message string, details string) {
+	_, _ = p.writer.Write([]byte(p.colorize(ColorGreen, Check+" "+message) + "\n"))
+	if details != "" {
+		_, _ = p.writer.Write([]byte("  " + p.colorize(ColorGray, details) + "\n"))
+	}
 }
 
 // Infof prints an info message in gray

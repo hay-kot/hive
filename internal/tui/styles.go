@@ -4,15 +4,16 @@ package tui
 import (
 	"github.com/charmbracelet/lipgloss"
 	lipglossv2 "github.com/charmbracelet/lipgloss/v2"
+	"github.com/hay-kot/hive/internal/styles"
 )
 
-// Tokyo Night color palette.
+// Re-export colors for local use.
 var (
-	colorGreen  = lipgloss.Color("#9ece6a") // green
-	colorYellow = lipgloss.Color("#e0af68") // yellow
-	colorBlue   = lipgloss.Color("#7aa2f7") // blue
-	colorGray   = lipgloss.Color("#565f89") // comment
-	colorWhite  = lipgloss.Color("#c0caf5") // foreground
+	colorGreen  = styles.ColorGreen
+	colorYellow = styles.ColorYellow
+	colorBlue   = styles.ColorBlue
+	colorGray   = styles.ColorGray
+	colorWhite  = styles.ColorWhite
 )
 
 // Styles used for rendering the TUI (lipgloss v1 for bubbles compatibility).
@@ -58,18 +59,11 @@ const (
 	iconDot = "•"      // Unicode bullet separator
 )
 
-// Banner ASCII art for the header.
-const banner = `
- ╦ ╦╦╦  ╦╔═╗
- ╠═╣║╚╗╔╝║╣
- ╩ ╩╩ ╚╝ ╚═╝`
-
-// bannerStyle styles the ASCII art banner.
-var bannerStyle = lipgloss.NewStyle().
-	Foreground(colorBlue).
-	Bold(true).
-	PaddingLeft(1).
-	PaddingBottom(1)
+// Use shared banner and style.
+var (
+	banner      = styles.Banner
+	bannerStyle = styles.BannerStyle.PaddingLeft(1).PaddingBottom(1)
+)
 
 // Modal styles using lipgloss v2 for canvas/layer support.
 var (
