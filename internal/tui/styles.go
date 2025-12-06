@@ -52,6 +52,12 @@ var (
 				Foreground(colorBlue)
 )
 
+// Icons and symbols.
+const (
+	iconGit = "\ue702" // Nerd Font git icon
+	iconDot = "•"      // Unicode bullet separator
+)
+
 // Banner ASCII art for the header.
 const banner = `
  ╦ ╦╦╦  ╦╔═╗

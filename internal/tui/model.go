@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/list"
@@ -71,7 +72,6 @@ func New(service *hive.Service, cfg *config.Config, opts Options) Model {
 	delegate.GitStatuses = gitStatuses
 
 	l := list.New([]list.Item{}, delegate, 0, 0)
-	l.Title = "Sessions"
 	l.SetShowStatusBar(false)
 	l.SetFilteringEnabled(false)
 	l.Styles.Title = titleStyle
@@ -81,6 +81,9 @@ func New(service *hive.Service, cfg *config.Config, opts Options) Model {
 
 	// If no local remote detected, force show all
 	showAll := opts.ShowAll || opts.LocalRemote == ""
+
+	// Set initial title
+	l.Title = buildTitle(showAll)
 
 	// Add custom keybindings to list help
 	l.AdditionalShortHelpKeys = func() []key.Binding {
@@ -298,11 +301,7 @@ func (m Model) applyFilter() (tea.Model, tea.Cmd) {
 	m.state = stateNormal
 
 	// Update title to show filter state
-	if m.showAll || m.localRemote == "" {
-		m.list.Title = "Sessions (all)"
-	} else {
-		m.list.Title = "Sessions (local)"
-	}
+	m.list.Title = buildTitle(m.showAll)
 
 	if len(paths) == 0 {
 		return m, nil
@@ -371,4 +370,31 @@ func (m Model) View() string {
 	}
 
 	return mainView
+}
+
+// buildTitle constructs the list title.
+func buildTitle(showAll bool) string {
+	if showAll {
+		return "Sessions (all)"
+	}
+	return "Sessions (local)"
+}
+
+// extractRepoName extracts the repository name from a git remote URL.
+func extractRepoName(remote string) string {
+	remote = strings.TrimSuffix(remote, ".git")
+
+	if idx := strings.LastIndex(remote, "/"); idx != -1 {
+		return remote[idx+1:]
+	}
+
+	if idx := strings.LastIndex(remote, ":"); idx != -1 {
+		part := remote[idx+1:]
+		if slashIdx := strings.LastIndex(part, "/"); slashIdx != -1 {
+			return part[slashIdx+1:]
+		}
+		return part
+	}
+
+	return remote
 }

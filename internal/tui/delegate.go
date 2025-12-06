@@ -92,7 +92,24 @@ func (d SessionDelegate) Render(w io.Writer, m list.Model, index int, item list.
 	}
 
 	stateTag := stateStyle.Render(fmt.Sprintf("[%s]", s.State))
-	title := fmt.Sprintf("%s %s", s.Name, stateTag)
+
+	// Determine name style based on selection
+	var nameStyle lipgloss.Style
+	if index == m.Index() {
+		nameStyle = d.Styles.Selected
+	} else {
+		nameStyle = d.Styles.Normal
+	}
+
+	// Build title: <git icon> <repo> • <name> [state]
+	var title string
+	if s.Remote != "" {
+		repoName := extractRepoName(s.Remote)
+		repoPrefix := iconGit + "  " + nameStyle.Render(repoName)
+		title = fmt.Sprintf("%s %s %s %s", repoPrefix, iconDot, nameStyle.Render(s.Name), stateTag)
+	} else {
+		title = fmt.Sprintf("%s %s", nameStyle.Render(s.Name), stateTag)
+	}
 
 	// Build the description line: Path
 	path := pathStyle.Render(s.Path)
@@ -112,18 +129,15 @@ func (d SessionDelegate) Render(w io.Writer, m list.Model, index int, item list.
 	gitLine := d.renderGitStatus(s.Path)
 
 	// Apply selection styling with left border
-	var titleStyle lipgloss.Style
 	var border string
 	if isSelected {
-		titleStyle = d.Styles.Selected
 		border = selectedBorderStyle.Render("┃") + " "
 	} else {
-		titleStyle = d.Styles.Normal
 		border = "  "
 	}
 
 	// Write to output with left border
-	_, _ = fmt.Fprintf(w, "%s%s\n", border, titleStyle.Render(title))
+	_, _ = fmt.Fprintf(w, "%s%s\n", border, title)
 	_, _ = fmt.Fprintf(w, "%s%s\n", border, promptLine)
 	_, _ = fmt.Fprintf(w, "%s%s\n", border, path)
 	_, _ = fmt.Fprintf(w, "%s%s", border, gitLine)
