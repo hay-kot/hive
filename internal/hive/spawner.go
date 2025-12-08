@@ -14,7 +14,8 @@ import (
 // SpawnData is the template context for spawn commands.
 type SpawnData struct {
 	Path   string // Absolute path to session directory
-	Name   string // Session name
+	Name   string // Session name (display name)
+	Slug   string // Session slug (URL-safe version of name)
 	Prompt string // AI prompt
 }
 

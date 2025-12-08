@@ -1,7 +1,22 @@
 // Package session defines session domain types and interfaces.
 package session
 
-import "time"
+import (
+	"regexp"
+	"strings"
+	"time"
+)
+
+var nonAlphanumeric = regexp.MustCompile(`[^a-z0-9]+`)
+
+// Slugify converts a name to a URL-safe slug.
+// "My Session Name" -> "my-session-name"
+func Slugify(name string) string {
+	s := strings.ToLower(strings.TrimSpace(name))
+	s = nonAlphanumeric.ReplaceAllString(s, "-")
+	s = strings.Trim(s, "-")
+	return s
+}
 
 // State represents the lifecycle state of a session.
 type State string
@@ -15,6 +30,7 @@ const (
 type Session struct {
 	ID        string    `json:"id"`
 	Name      string    `json:"name"`
+	Slug      string    `json:"slug"`
 	Path      string    `json:"path"`
 	Remote    string    `json:"remote"`
 	Prompt    string    `json:"prompt,omitempty"`

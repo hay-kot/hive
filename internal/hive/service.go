@@ -80,12 +80,15 @@ func (s *Service) CreateSession(ctx context.Context, opts CreateOptions) (*sessi
 
 	var sess session.Session
 
+	slug := session.Slugify(opts.Name)
+
 	if err == nil {
 		// Reuse existing recycled session (already cleaned up when marked for recycle)
 		s.log.Debug().Str("session_id", recyclable.ID).Msg("found recyclable session")
 
 		sess = recyclable
 		sess.Name = opts.Name
+		sess.Slug = slug
 		sess.Prompt = opts.Prompt
 		sess.State = session.StateActive
 		sess.UpdatedAt = time.Now()
@@ -93,7 +96,7 @@ func (s *Service) CreateSession(ctx context.Context, opts CreateOptions) (*sessi
 		// Create new session
 		id := generateID()
 		repoName := extractRepoName(remote)
-		path := filepath.Join(s.config.ReposDir(), fmt.Sprintf("%s-%s-%s", repoName, opts.Name, id))
+		path := filepath.Join(s.config.ReposDir(), fmt.Sprintf("%s-%s-%s", repoName, slug, id))
 
 		s.log.Info().Str("remote", remote).Str("dest", path).Msg("cloning repository")
 
@@ -107,6 +110,7 @@ func (s *Service) CreateSession(ctx context.Context, opts CreateOptions) (*sessi
 		sess = session.Session{
 			ID:        id,
 			Name:      opts.Name,
+			Slug:      slug,
 			Path:      path,
 			Remote:    remote,
 			Prompt:    opts.Prompt,
@@ -131,6 +135,7 @@ func (s *Service) CreateSession(ctx context.Context, opts CreateOptions) (*sessi
 		data := SpawnData{
 			Path:   sess.Path,
 			Name:   sess.Name,
+			Slug:   sess.Slug,
 			Prompt: opts.Prompt,
 		}
 		if err := s.spawner.Spawn(ctx, s.config.Commands.Spawn, data); err != nil {
