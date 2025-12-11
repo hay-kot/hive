@@ -86,6 +86,12 @@ func (s *Service) CreateSession(ctx context.Context, opts CreateOptions) (*sessi
 		// Reuse existing recycled session (already cleaned up when marked for recycle)
 		s.log.Debug().Str("session_id", recyclable.ID).Msg("found recyclable session")
 
+		// Pull latest changes before running hooks
+		s.log.Debug().Str("path", recyclable.Path).Msg("pulling latest changes")
+		if err := s.git.Pull(ctx, recyclable.Path); err != nil {
+			return nil, fmt.Errorf("pull latest: %w", err)
+		}
+
 		// Rename directory to new session name pattern
 		repoName := extractRepoName(remote)
 		newPath := filepath.Join(s.config.ReposDir(), fmt.Sprintf("%s-%s-%s", repoName, slug, recyclable.ID))
