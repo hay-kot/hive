@@ -169,6 +169,7 @@ Run 'hive new' to create a new session from the current repository.`,
 	app = tuiCmd.Register(app)
 	app = commands.NewLsCmd(flags).Register(app)
 	app = commands.NewPruneCmd(flags).Register(app)
+	app = commands.NewTemplatesCmd(flags).Register(app)
 
 	// Set TUI as default action when no subcommand is provided
 	app.Action = tuiCmd.Run
