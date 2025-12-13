@@ -15,10 +15,26 @@ type FormResult struct {
 	Values map[string]any
 }
 
+// AllFieldsPrefilled returns true if all template fields have values in prefilled.
+func AllFieldsPrefilled(tmpl config.Template, prefilled map[string]any) bool {
+	for _, field := range tmpl.Fields {
+		if _, ok := prefilled[field.Name]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
 // RunForm generates and runs a huh form for the given template, returning collected values.
-func RunForm(tmpl config.Template) (*FormResult, error) {
+// If prefilled values are provided, they are used as defaults for the form fields.
+// The form is skipped entirely if all fields have prefilled values (use AllFieldsPrefilled to check).
+func RunForm(tmpl config.Template, prefilled map[string]any) (*FormResult, error) {
+	if prefilled == nil {
+		prefilled = make(map[string]any)
+	}
+
 	if len(tmpl.Fields) == 0 {
-		return &FormResult{Values: make(map[string]any)}, nil
+		return &FormResult{Values: prefilled}, nil
 	}
 
 	result := &FormResult{Values: make(map[string]any)}
@@ -26,7 +42,9 @@ func RunForm(tmpl config.Template) (*FormResult, error) {
 	bindings := make(map[string]any)
 
 	for _, field := range tmpl.Fields {
-		f, binding := createField(field)
+		// Get prefilled value if it exists
+		prefilledVal, hasPrefilled := prefilled[field.Name]
+		f, binding := createFieldWithValue(field, prefilledVal, hasPrefilled)
 		if f != nil {
 			fields = append(fields, f)
 			bindings[field.Name] = binding
@@ -51,26 +69,30 @@ func RunForm(tmpl config.Template) (*FormResult, error) {
 	return result, nil
 }
 
-// createField creates a huh field from a template field definition.
+// createFieldWithValue creates a huh field from a template field definition with an optional prefilled value.
 // Returns the field and a binding pointer for value extraction.
-func createField(field config.TemplateField) (huh.Field, any) {
+func createFieldWithValue(field config.TemplateField, prefilledVal any, hasPrefilled bool) (huh.Field, any) {
 	switch field.Type {
 	case config.FieldTypeString:
-		return createStringField(field)
+		return createStringField(field, prefilledVal, hasPrefilled)
 	case config.FieldTypeText:
-		return createTextField(field)
+		return createTextField(field, prefilledVal, hasPrefilled)
 	case config.FieldTypeSelect:
-		return createSelectField(field)
+		return createSelectField(field, prefilledVal, hasPrefilled)
 	case config.FieldTypeMultiSelect:
-		return createMultiSelectField(field)
+		return createMultiSelectField(field, prefilledVal, hasPrefilled)
 	default:
 		return nil, nil
 	}
 }
 
-func createStringField(field config.TemplateField) (huh.Field, any) {
+func createStringField(field config.TemplateField, prefilledVal any, hasPrefilled bool) (huh.Field, any) {
 	var value string
-	if field.Default != "" {
+	if hasPrefilled {
+		if s, ok := prefilledVal.(string); ok {
+			value = s
+		}
+	} else if field.Default != "" {
 		value = field.Default
 	}
 
@@ -89,9 +111,13 @@ func createStringField(field config.TemplateField) (huh.Field, any) {
 	return input, &value
 }
 
-func createTextField(field config.TemplateField) (huh.Field, any) {
+func createTextField(field config.TemplateField, prefilledVal any, hasPrefilled bool) (huh.Field, any) {
 	var value string
-	if field.Default != "" {
+	if hasPrefilled {
+		if s, ok := prefilledVal.(string); ok {
+			value = s
+		}
+	} else if field.Default != "" {
 		value = field.Default
 	}
 
@@ -110,9 +136,13 @@ func createTextField(field config.TemplateField) (huh.Field, any) {
 	return text, &value
 }
 
-func createSelectField(field config.TemplateField) (huh.Field, any) {
+func createSelectField(field config.TemplateField, prefilledVal any, hasPrefilled bool) (huh.Field, any) {
 	var value string
-	if field.Default != "" {
+	if hasPrefilled {
+		if s, ok := prefilledVal.(string); ok {
+			value = s
+		}
+	} else if field.Default != "" {
 		value = field.Default
 	}
 
@@ -133,8 +163,13 @@ func createSelectField(field config.TemplateField) (huh.Field, any) {
 	return sel, &value
 }
 
-func createMultiSelectField(field config.TemplateField) (huh.Field, any) {
+func createMultiSelectField(field config.TemplateField, prefilledVal any, hasPrefilled bool) (huh.Field, any) {
 	var values []string
+	if hasPrefilled {
+		if arr, ok := prefilledVal.([]string); ok {
+			values = arr
+		}
+	}
 
 	options := make([]huh.Option[string], len(field.Options))
 	for i, opt := range field.Options {

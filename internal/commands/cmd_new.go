@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/huh"
+	"github.com/hay-kot/hive/internal/core/config"
 	"github.com/hay-kot/hive/internal/hive"
 	"github.com/hay-kot/hive/internal/printer"
 	"github.com/hay-kot/hive/internal/styles"
@@ -20,7 +21,6 @@ type NewCmd struct {
 	// Command-specific flags
 	name     string
 	remote   string
-	prompt   string
 	template string
 	setVals  []string
 }
@@ -59,12 +59,6 @@ When --name is omitted, an interactive form prompts for input.`,
 				Destination: &cmd.remote,
 			},
 			&cli.StringFlag{
-				Name:        "prompt",
-				Aliases:     []string{"p"},
-				Usage:       "AI prompt passed to the spawn command template",
-				Destination: &cmd.prompt,
-			},
-			&cli.StringFlag{
 				Name:        "template",
 				Aliases:     []string{"t"},
 				Usage:       "use a session template (run 'hive templates list' to see available)",
@@ -85,74 +79,54 @@ When --name is omitted, an interactive form prompts for input.`,
 func (cmd *NewCmd) run(ctx context.Context, c *cli.Command) error {
 	p := printer.Ctx(ctx)
 
-	// Template mode: use template to generate prompt and optionally name
-	if cmd.template != "" {
-		return cmd.runTemplate(ctx, p)
+	// Determine which template to use (default to "default")
+	templateName := cmd.template
+	if templateName == "" {
+		templateName = "default"
 	}
 
-	// Standard mode: show interactive form if name not provided via flag
-	if cmd.name == "" {
-		if err := cmd.runForm(); err != nil {
+	// Look up template from config (always succeeds due to built-in default)
+	tmpl, ok := cmd.flags.Config.Templates[templateName]
+	if !ok {
+		return fmt.Errorf("template %q not found (run 'hive templates list' to see available)", templateName)
+	}
+
+	// Build prefilled values: parse --set flags first, then override with --name if provided
+	prefilled, err := templates.ParseSetValues(cmd.setVals)
+	if err != nil {
+		return fmt.Errorf("parse --set values: %w", err)
+	}
+
+	// --name flag takes precedence over --set name=...
+	if cmd.name != "" {
+		prefilled["name"] = cmd.name
+	}
+
+	var values map[string]any
+
+	// Determine form behavior based on prefilled values
+	switch {
+	case templates.AllFieldsPrefilled(tmpl, prefilled):
+		// Skip form, validate required fields, use prefilled values directly
+		if err := templates.ValidateRequiredFields(tmpl, prefilled); err != nil {
+			return err
+		}
+		values = prefilled
+	case len(tmpl.Fields) > 0:
+		// Run form with prefilled values as defaults
+		fmt.Println(styles.BannerStyle.Render(styles.Banner))
+		fmt.Println()
+
+		result, err := templates.RunForm(tmpl, prefilled)
+		if err != nil {
 			if errors.Is(err, huh.ErrUserAborted) {
 				return nil
 			}
 			return fmt.Errorf("form: %w", err)
 		}
-	}
-
-	opts := hive.CreateOptions{
-		Name:   cmd.name,
-		Remote: cmd.remote,
-		Prompt: cmd.prompt,
-	}
-
-	sess, err := cmd.flags.Service.CreateSession(ctx, opts)
-	if err != nil {
-		return fmt.Errorf("create session: %w", err)
-	}
-
-	p.Success("Session created", sess.Path)
-
-	return nil
-}
-
-func (cmd *NewCmd) runTemplate(ctx context.Context, p *printer.Printer) error {
-	// Look up template from config
-	tmpl, ok := cmd.flags.Config.Templates[cmd.template]
-	if !ok {
-		return fmt.Errorf("template %q not found (run 'hive templates list' to see available)", cmd.template)
-	}
-
-	var values map[string]any
-	var err error
-
-	// Use --set values if provided, otherwise run interactive form
-	switch {
-	case len(cmd.setVals) > 0:
-		values, err = templates.ParseSetValues(cmd.setVals)
-		if err != nil {
-			return fmt.Errorf("parse --set values: %w", err)
-		}
-
-		// Validate required fields when using --set
-		if err := templates.ValidateRequiredFields(tmpl, values); err != nil {
-			return err
-		}
-	case len(tmpl.Fields) > 0:
-		// Print banner header
-		fmt.Println(styles.BannerStyle.Render(styles.Banner))
-		fmt.Println()
-
-		result, err := templates.RunForm(tmpl)
-		if err != nil {
-			if errors.Is(err, huh.ErrUserAborted) {
-				return nil
-			}
-			return fmt.Errorf("template form: %w", err)
-		}
 		values = result.Values
 	default:
-		values = make(map[string]any)
+		values = prefilled
 	}
 
 	// Render prompt from template
@@ -161,24 +135,13 @@ func (cmd *NewCmd) runTemplate(ctx context.Context, p *printer.Printer) error {
 		return fmt.Errorf("render prompt: %w", err)
 	}
 
-	// Render session name from template if provided, otherwise use flag or prompt for name
-	sessionName := cmd.name
-	if sessionName == "" && tmpl.Name != "" {
-		sessionName, err = templates.RenderName(tmpl, values)
-		if err != nil {
-			return fmt.Errorf("render session name: %w", err)
+	// Determine session name
+	sessionName, err := cmd.resolveSessionName(tmpl, values)
+	if err != nil {
+		if errors.Is(err, huh.ErrUserAborted) {
+			return nil
 		}
-	}
-
-	// If still no name, require user to provide one via form
-	if sessionName == "" {
-		if err := cmd.runNameForm(); err != nil {
-			if errors.Is(err, huh.ErrUserAborted) {
-				return nil
-			}
-			return fmt.Errorf("name form: %w", err)
-		}
-		sessionName = cmd.name
+		return err
 	}
 
 	opts := hive.CreateOptions{
@@ -197,36 +160,45 @@ func (cmd *NewCmd) runTemplate(ctx context.Context, p *printer.Printer) error {
 	return nil
 }
 
-func (cmd *NewCmd) runNameForm() error {
-	return huh.NewForm(
-		huh.NewGroup(
-			huh.NewInput().
-				Title("Session name").
-				Description("Used in the directory path").
-				Validate(validateName).
-				Value(&cmd.name),
-		),
-	).WithTheme(styles.FormTheme()).Run()
+// resolveSessionName determines the session name from values or template.
+func (cmd *NewCmd) resolveSessionName(tmpl config.Template, values map[string]any) (string, error) {
+	// First check if name is in values (from form or --set/--name flags)
+	if nameVal, ok := values["name"]; ok {
+		if name, ok := nameVal.(string); ok && strings.TrimSpace(name) != "" {
+			return name, nil
+		}
+	}
+
+	// Try rendering from template's Name field
+	if tmpl.Name != "" {
+		name, err := templates.RenderName(tmpl, values)
+		if err != nil {
+			return "", fmt.Errorf("render session name: %w", err)
+		}
+		if strings.TrimSpace(name) != "" {
+			return name, nil
+		}
+	}
+
+	// Fallback: prompt user for name
+	return cmd.promptForName()
 }
 
-func (cmd *NewCmd) runForm() error {
-	// Print banner header
-	fmt.Println(styles.BannerStyle.Render(styles.Banner))
-	fmt.Println()
-
-	return huh.NewForm(
+func (cmd *NewCmd) promptForName() (string, error) {
+	var name string
+	err := huh.NewForm(
 		huh.NewGroup(
 			huh.NewInput().
 				Title("Session name").
 				Description("Used in the directory path").
 				Validate(validateName).
-				Value(&cmd.name),
-			huh.NewText().
-				Title("Prompt").
-				Description("AI prompt to pass to spawn command").
-				Value(&cmd.prompt),
+				Value(&name),
 		),
 	).WithTheme(styles.FormTheme()).Run()
+	if err != nil {
+		return "", fmt.Errorf("name form: %w", err)
+	}
+	return name, nil
 }
 
 func validateName(s string) error {
