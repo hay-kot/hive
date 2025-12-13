@@ -55,20 +55,20 @@ Creates a new agent session.
 |------|-------|-------------|
 | `--name` | `-n` | Session name (used in directory path) |
 | `--remote` | `-r` | Git remote URL (auto-detected from current directory if not specified) |
-| `--prompt` | `-p` | AI prompt to pass to spawn command |
-| `--template` | `-t` | Use a session template (see Templates section) |
+| `--template` | `-t` | Use a session template (defaults to "default") |
 | `--set` | - | Set template field value (name=value), use commas for multi-select |
 
 **Behavior:**
 
-1. If `--template` is provided, uses the template to generate the prompt
-2. If `--name` is not provided, shows an interactive form prompting for session name and AI prompt
-3. Checks for a recyclable session with the same remote
-4. If recyclable found: runs recycle commands (reset, checkout main, pull)
-5. If no recyclable: clones the repository fresh
-6. Runs any configured hooks matching the remote
-7. Saves session to the store
-8. Spawns a terminal with the configured spawn command
+1. Uses the specified template (or built-in "default" template if not specified)
+2. If all template fields are provided via `--name` and/or `--set` flags, skips the form
+3. Otherwise, shows an interactive form with any prefilled values as defaults
+4. Checks for a recyclable session with the same remote
+5. If recyclable found: runs recycle commands (reset, checkout main, pull)
+6. If no recyclable: clones the repository fresh
+7. Runs any configured hooks matching the remote
+8. Saves session to the store
+9. Spawns a terminal with the configured spawn command
 
 **Examples:**
 
@@ -76,13 +76,13 @@ Creates a new agent session.
 # Interactive mode - prompts for name and prompt
 hive new
 
-# Non-interactive with all options
-hive new --name feature-auth --prompt "Implement OAuth2 login flow"
+# Non-interactive with all values provided
+hive new --name feature-auth --set prompt="Implement OAuth2 login flow"
 
 # Auto-detect remote from current directory
 hive new -n bugfix-123
 
-# Using a template (interactive form for fields)
+# Using a custom template (interactive form for fields)
 hive new --template pr-review
 
 # Using a template with --set flags (non-interactive)
@@ -271,6 +271,56 @@ Templates define reusable session configurations with interactive forms. Each te
 - `prompt`: Go template for generating the AI prompt (required)
 - `fields`: List of form fields to collect user input
 
+**Built-in Default Template:**
+
+Hive includes a built-in "default" template that matches the standard `hive new` behavior:
+
+```yaml
+# Built-in default template (you don't need to define this)
+templates:
+  default:
+    description: "Default session template"
+    name: "{{ .name }}"
+    prompt: "{{ .prompt }}"
+    fields:
+      - name: name
+        label: "Session name"
+        type: string
+        required: true
+      - name: prompt
+        label: "Prompt"
+        type: text
+        placeholder: "AI prompt to pass to spawn command"
+```
+
+You can override this default in your config to customize the standard `hive new` behavior:
+
+```yaml
+# Example: Custom default with additional fields
+templates:
+  default:
+    description: "My custom default"
+    name: "{{ .name }}"
+    prompt: |
+      {{ .prompt }}
+      {{ if .tags }}Tags: {{ .tags | join ", " }}{{ end }}
+    fields:
+      - name: name
+        label: "Session name"
+        type: string
+        required: true
+      - name: prompt
+        label: "Prompt"
+        type: text
+      - name: tags
+        label: "Tags"
+        type: multi-select
+        options:
+          - value: feature
+          - value: bugfix
+          - value: refactor
+```
+
 **Field Types:**
 
 | Type | Description | Form Element |
@@ -303,12 +353,20 @@ Templates define reusable session configurations with interactive forms. Each te
 **Usage:**
 
 ```bash
-# Interactive - shows form for all fields
+# Interactive - shows form for all fields (uses "default" template)
+hive new
+
+# Non-interactive with values via flags
+hive new --name feature-auth --set prompt="Implement OAuth2 login"
+
+# Use a specific template
 hive new --template pr-review
 
 # Non-interactive - set field values directly
 hive new --template pr-review --set pr_number=123 --set focus_areas=security,performance
 ```
+
+**Note:** The `--name` flag takes precedence over `--set name=...` if both are provided.
 
 ## Data Storage
 
