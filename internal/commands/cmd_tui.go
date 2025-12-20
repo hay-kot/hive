@@ -24,39 +24,22 @@ func NewTuiCmd(flags *Flags) *TuiCmd {
 	}
 }
 
-// Register adds the tui command to the application
-func (cmd *TuiCmd) Register(app *cli.Command) *cli.Command {
-	app.Commands = append(app.Commands, &cli.Command{
-		Name:      "tui",
-		Usage:     "Launch the interactive session manager",
-		UsageText: "hive tui [--all]",
-		Description: `Opens a terminal UI for managing sessions.
-
-Navigate with arrow keys or j/k. Press r to recycle, d to delete.
-Custom keybindings can be configured in the config file.
-
-This is the default command when hive is run without arguments.
-
-By default, only sessions for the current repository are shown.
-Use --all to show all sessions, or press 'a' to toggle in the TUI.`,
-		Flags: []cli.Flag{
-			&cli.BoolFlag{
-				Name:        "all",
-				Usage:       "Show all sessions instead of only local repository sessions",
-				Value:       false,
-				Destination: &cmd.showAll,
-			},
-			&cli.BoolFlag{
-				Name:        "hide-recycled",
-				Usage:       "Hide recycled sessions (toggle with 'x' in TUI)",
-				Value:       true,
-				Destination: &cmd.hideRecycled,
-			},
+// Flags returns the TUI-specific flags for registration on the root command
+func (cmd *TuiCmd) Flags() []cli.Flag {
+	return []cli.Flag{
+		&cli.BoolFlag{
+			Name:        "all",
+			Usage:       "Show all sessions instead of only local repository sessions",
+			Value:       false,
+			Destination: &cmd.showAll,
 		},
-		Action: cmd.run,
-	})
-
-	return app
+		&cli.BoolFlag{
+			Name:        "hide-recycled",
+			Usage:       "Hide recycled sessions (toggle with 'x' in TUI)",
+			Value:       true,
+			Destination: &cmd.hideRecycled,
+		},
+	}
 }
 
 // Run executes the TUI. Exported for use as default command.

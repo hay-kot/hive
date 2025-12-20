@@ -132,8 +132,8 @@ Run 'hive new' to create a new session from the current repository.`,
 			},
 		},
 		Before: func(ctx context.Context, c *cli.Command) (context.Context, error) {
-			// Detect TUI mode: either "tui" subcommand or no subcommand (default action)
-			isTUI := len(c.Args().Slice()) == 0 || c.Args().First() == "tui"
+			// Detect TUI mode: no subcommand means TUI (default action)
+			isTUI := len(c.Args().Slice()) == 0
 
 			// In TUI mode, buffer logs to display after exit
 			var deferred io.Writer
@@ -166,12 +166,19 @@ Run 'hive new' to create a new session from the current repository.`,
 	tuiCmd := commands.NewTuiCmd(flags)
 
 	app = commands.NewNewCmd(flags).Register(app)
-	app = tuiCmd.Register(app)
 	app = commands.NewLsCmd(flags).Register(app)
 	app = commands.NewPruneCmd(flags).Register(app)
 
+	// Register TUI flags on root command
+	app.Flags = append(app.Flags, tuiCmd.Flags()...)
+
 	// Set TUI as default action when no subcommand is provided
-	app.Action = tuiCmd.Run
+	app.Action = func(ctx context.Context, c *cli.Command) error {
+		if c.Args().Len() > 0 {
+			return fmt.Errorf("unknown command %q. Run 'hive --help' for usage", c.Args().First())
+		}
+		return tuiCmd.Run(ctx, c)
+	}
 
 	exitCode := 0
 	if err := app.Run(ctx, os.Args); err != nil {
