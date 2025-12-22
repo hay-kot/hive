@@ -22,8 +22,9 @@ func Slugify(name string) string {
 type State string
 
 const (
-	StateActive   State = "active"
-	StateRecycled State = "recycled"
+	StateActive    State = "active"
+	StateRecycled  State = "recycled"
+	StateCorrupted State = "corrupted"
 )
 
 // Session represents an isolated git environment for an AI agent.
@@ -47,5 +48,11 @@ func (s *Session) CanRecycle() bool {
 // MarkRecycled transitions the session to the recycled state.
 func (s *Session) MarkRecycled(now time.Time) {
 	s.State = StateRecycled
+	s.UpdatedAt = now
+}
+
+// MarkCorrupted transitions the session to the corrupted state.
+func (s *Session) MarkCorrupted(now time.Time) {
+	s.State = StateCorrupted
 	s.UpdatedAt = now
 }

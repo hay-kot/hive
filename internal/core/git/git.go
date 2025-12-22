@@ -1,7 +1,10 @@
 // Package git provides an abstraction for git operations.
 package git
 
-import "context"
+import (
+	"context"
+	"strings"
+)
 
 // Git defines git operations needed by hive.
 type Git interface {
@@ -23,4 +26,26 @@ type Git interface {
 	DefaultBranch(ctx context.Context, dir string) (string, error)
 	// DiffStats returns the number of lines added and deleted compared to the default branch.
 	DiffStats(ctx context.Context, dir string) (additions, deletions int, err error)
+	// IsValidRepo checks if dir contains a valid git repository.
+	IsValidRepo(ctx context.Context, dir string) error
+}
+
+// ExtractRepoName extracts the repository name from a git remote URL.
+// Handles both SSH (git@github.com:user/repo.git) and HTTPS (https://github.com/user/repo.git) formats.
+func ExtractRepoName(remote string) string {
+	remote = strings.TrimSuffix(remote, ".git")
+
+	if idx := strings.LastIndex(remote, "/"); idx != -1 {
+		return remote[idx+1:]
+	}
+
+	if idx := strings.LastIndex(remote, ":"); idx != -1 {
+		part := remote[idx+1:]
+		if slashIdx := strings.LastIndex(part, "/"); slashIdx != -1 {
+			return part[slashIdx+1:]
+		}
+		return part
+	}
+
+	return remote
 }

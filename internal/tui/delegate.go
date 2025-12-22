@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/hay-kot/hive/internal/core/git"
 	"github.com/hay-kot/hive/internal/core/session"
 	"github.com/hay-kot/hive/pkg/kv"
 )
@@ -22,7 +23,7 @@ type SessionItem struct {
 // FilterValue returns the value used for filtering.
 // Format: "repoName sessionName" to allow searching by either.
 func (i SessionItem) FilterValue() string {
-	repoName := extractRepoName(i.Session.Remote)
+	repoName := git.ExtractRepoName(i.Session.Remote)
 	return repoName + " " + i.Session.Name
 }
 
@@ -119,7 +120,7 @@ func (d SessionDelegate) Render(w io.Writer, m list.Model, index int, item list.
 	// Build title: <git icon> <repo> • <name> [state]
 	// FilterValue format is "repoName sessionName", so we map indices accordingly
 	var title string
-	repoName := extractRepoName(s.Remote)
+	repoName := git.ExtractRepoName(s.Remote)
 	repoOffset := 0
 	nameOffset := len([]rune(repoName)) + 1 // +1 for space separator
 

@@ -2,13 +2,11 @@ package hive
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"math/rand"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/hay-kot/hive/internal/core/config"
@@ -72,35 +70,36 @@ func (s *Service) CreateSession(ctx context.Context, opts CreateOptions) (*sessi
 		s.log.Debug().Str("remote", remote).Msg("detected remote")
 	}
 
-	// Check for recyclable session
-	recyclable, err := s.sessions.FindRecyclable(ctx, remote)
-	if err != nil && !errors.Is(err, session.ErrNoRecyclable) {
-		return nil, fmt.Errorf("find recyclable: %w", err)
-	}
-
 	var sess session.Session
-
 	slug := session.Slugify(opts.Name)
 
-	if err == nil {
+	// Try to find and validate a recyclable session
+	recyclable := s.findValidRecyclable(ctx, remote)
+
+	if recyclable != nil {
 		// Reuse existing recycled session (already cleaned up when marked for recycle)
-		s.log.Debug().Str("session_id", recyclable.ID).Msg("found recyclable session")
+		s.log.Debug().Str("session_id", recyclable.ID).Msg("found valid recyclable session")
 
 		// Pull latest changes before running hooks
 		s.log.Debug().Str("path", recyclable.Path).Msg("pulling latest changes")
 		if err := s.git.Pull(ctx, recyclable.Path); err != nil {
-			return nil, fmt.Errorf("pull latest: %w", err)
+			// Pull failed - mark as corrupted and fall through to clone
+			s.log.Warn().Err(err).Str("session_id", recyclable.ID).Msg("pull failed, marking corrupted")
+			s.markCorrupted(ctx, recyclable)
+			recyclable = nil
 		}
+	}
 
+	if recyclable != nil {
 		// Rename directory to new session name pattern
-		repoName := extractRepoName(remote)
+		repoName := git.ExtractRepoName(remote)
 		newPath := filepath.Join(s.config.ReposDir(), fmt.Sprintf("%s-%s-%s", repoName, slug, recyclable.ID))
 
 		if err := os.Rename(recyclable.Path, newPath); err != nil {
 			return nil, fmt.Errorf("rename recycled directory: %w", err)
 		}
 
-		sess = recyclable
+		sess = *recyclable
 		sess.Name = opts.Name
 		sess.Slug = slug
 		sess.Path = newPath
@@ -108,9 +107,9 @@ func (s *Service) CreateSession(ctx context.Context, opts CreateOptions) (*sessi
 		sess.State = session.StateActive
 		sess.UpdatedAt = time.Now()
 	} else {
-		// Create new session
+		// Create new session (either no recyclable found or it was corrupted)
 		id := generateID()
-		repoName := extractRepoName(remote)
+		repoName := git.ExtractRepoName(remote)
 		path := filepath.Join(s.config.ReposDir(), fmt.Sprintf("%s-%s-%s", repoName, slug, id))
 
 		s.log.Info().Str("remote", remote).Str("dest", path).Msg("cloning repository")
@@ -186,12 +185,30 @@ func (s *Service) RecycleSession(ctx context.Context, id string, w io.Writer) er
 		return fmt.Errorf("session %s cannot be recycled (state: %s)", id, sess.State)
 	}
 
-	if err := s.recycler.Recycle(ctx, sess.Path, s.config.Commands.Recycle, w); err != nil {
+	// Validate repository before recycling
+	if err := s.git.IsValidRepo(ctx, sess.Path); err != nil {
+		s.log.Warn().Err(err).Str("session_id", id).Msg("session has corrupted repository")
+		s.markCorrupted(ctx, &sess)
+		return fmt.Errorf("session %s has corrupted repository: %w", id, err)
+	}
+
+	// Get default branch for template
+	defaultBranch, err := s.git.DefaultBranch(ctx, sess.Path)
+	if err != nil {
+		s.log.Warn().Err(err).Msg("failed to get default branch, using 'main'")
+		defaultBranch = "main"
+	}
+
+	data := RecycleData{
+		DefaultBranch: defaultBranch,
+	}
+
+	if err := s.recycler.Recycle(ctx, sess.Path, s.config.Commands.Recycle, data, w); err != nil {
 		return fmt.Errorf("recycle session %s: %w", id, err)
 	}
 
 	// Rename directory to recycled pattern immediately
-	repoName := extractRepoName(sess.Remote)
+	repoName := git.ExtractRepoName(sess.Remote)
 	newPath := filepath.Join(s.config.ReposDir(), fmt.Sprintf("%s-recycle-%s", repoName, generateID()))
 
 	if err := os.Rename(sess.Path, newPath); err != nil {
@@ -232,9 +249,9 @@ func (s *Service) DeleteSession(ctx context.Context, id string) error {
 	return nil
 }
 
-// Prune removes all recycled sessions and their directories.
+// Prune removes all recycled and corrupted sessions and their directories.
 func (s *Service) Prune(ctx context.Context) (int, error) {
-	s.log.Info().Msg("pruning recycled sessions")
+	s.log.Info().Msg("pruning sessions")
 
 	sessions, err := s.sessions.List(ctx)
 	if err != nil {
@@ -243,12 +260,12 @@ func (s *Service) Prune(ctx context.Context) (int, error) {
 
 	count := 0
 	for _, sess := range sessions {
-		if sess.State != session.StateRecycled {
+		if sess.State != session.StateRecycled && sess.State != session.StateCorrupted {
 			continue
 		}
 
 		if err := s.DeleteSession(ctx, sess.ID); err != nil {
-			s.log.Warn().Err(err).Str("session_id", sess.ID).Msg("failed to prune session")
+			s.log.Warn().Err(err).Str("session_id", sess.ID).Str("state", string(sess.State)).Msg("failed to prune session")
 			continue
 		}
 
@@ -280,25 +297,52 @@ func generateID() string {
 	return string(b)
 }
 
-// extractRepoName extracts the repository name from a git remote URL.
-// Handles both SSH (git@github.com:user/repo.git) and HTTPS (https://github.com/user/repo.git) formats.
-func extractRepoName(remote string) string {
-	// Remove .git suffix
-	remote = strings.TrimSuffix(remote, ".git")
-
-	// Handle SSH format: git@github.com:user/repo
-	if idx := strings.LastIndex(remote, "/"); idx != -1 {
-		return remote[idx+1:]
+// findValidRecyclable finds a recyclable session and validates it.
+// Returns nil if none found or all candidates are corrupted.
+func (s *Service) findValidRecyclable(ctx context.Context, remote string) *session.Session {
+	sessions, err := s.sessions.List(ctx)
+	if err != nil {
+		s.log.Warn().Err(err).Msg("failed to list sessions")
+		return nil
 	}
 
-	// Handle case where : is the separator (git@github.com:user/repo)
-	if idx := strings.LastIndex(remote, ":"); idx != -1 {
-		part := remote[idx+1:]
-		if slashIdx := strings.LastIndex(part, "/"); slashIdx != -1 {
-			return part[slashIdx+1:]
+	for i := range sessions {
+		sess := &sessions[i]
+
+		// Skip non-recyclable sessions
+		if sess.State != session.StateRecycled || sess.Remote != remote {
+			continue
 		}
-		return part
+
+		// Validate the repository
+		if err := s.git.IsValidRepo(ctx, sess.Path); err != nil {
+			s.log.Warn().Err(err).Str("session_id", sess.ID).Str("path", sess.Path).Msg("corrupted session found")
+			s.markCorrupted(ctx, sess)
+			continue
+		}
+
+		return sess
 	}
 
-	return remote
+	return nil
+}
+
+// markCorrupted marks a session as corrupted and optionally deletes it.
+func (s *Service) markCorrupted(ctx context.Context, sess *session.Session) {
+	sess.MarkCorrupted(time.Now())
+
+	if s.config.AutoDeleteCorrupted {
+		s.log.Info().Str("session_id", sess.ID).Msg("auto-deleting corrupted session")
+		if err := s.DeleteSession(ctx, sess.ID); err != nil {
+			s.log.Warn().Err(err).Str("session_id", sess.ID).Msg("failed to delete corrupted session, marking instead")
+			// Fall through to save as corrupted
+			if err := s.sessions.Save(ctx, *sess); err != nil {
+				s.log.Error().Err(err).Str("session_id", sess.ID).Msg("failed to save corrupted session")
+			}
+		}
+	} else {
+		if err := s.sessions.Save(ctx, *sess); err != nil {
+			s.log.Error().Err(err).Str("session_id", sess.ID).Msg("failed to save corrupted session")
+		}
+	}
 }

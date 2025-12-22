@@ -2,7 +2,6 @@ package tui
 
 import (
 	"context"
-	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/list"
@@ -500,25 +499,6 @@ func buildTitle(showAll, hideRecycled bool) string {
 		return "Sessions (" + scope + ", active)"
 	}
 	return "Sessions (" + scope + ")"
-}
-
-// extractRepoName extracts the repository name from a git remote URL.
-func extractRepoName(remote string) string {
-	remote = strings.TrimSuffix(remote, ".git")
-
-	if idx := strings.LastIndex(remote, "/"); idx != -1 {
-		return remote[idx+1:]
-	}
-
-	if idx := strings.LastIndex(remote, ":"); idx != -1 {
-		part := remote[idx+1:]
-		if slashIdx := strings.LastIndex(part, "/"); slashIdx != -1 {
-			return part[slashIdx+1:]
-		}
-		return part
-	}
-
-	return remote
 }
 
 // startRecycle returns a command that starts the recycle operation with streaming output.

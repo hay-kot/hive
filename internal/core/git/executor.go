@@ -3,6 +3,8 @@ package git
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/hay-kot/hive/pkg/executil"
@@ -166,4 +168,17 @@ func parseInt(s string) (int, error) {
 		}
 	}
 	return n, nil
+}
+
+func (e *Executor) IsValidRepo(ctx context.Context, dir string) error {
+	gitDir := filepath.Join(dir, ".git")
+	if _, err := os.Stat(gitDir); os.IsNotExist(err) {
+		return fmt.Errorf(".git directory missing")
+	}
+
+	if _, err := e.exec.RunDir(ctx, dir, e.gitPath, "rev-parse", "--git-dir"); err != nil {
+		return fmt.Errorf("git rev-parse failed: %w", err)
+	}
+
+	return nil
 }
