@@ -37,56 +37,17 @@ func build() string {
 	return fmt.Sprintf("%s (%s) %s", version, short, date)
 }
 
-func setupLogger(level string, logFile string, deferred io.Writer) error {
-	parsedLevel, err := zerolog.ParseLevel(level)
-	if err != nil {
-		return fmt.Errorf("failed to parse log level: %w", err)
-	}
-
-	var output io.Writer = zerolog.ConsoleWriter{Out: os.Stderr}
-
-	if logFile != "" {
-		// Create log directory if it doesn't exist
-		logDir := filepath.Dir(logFile)
-		if err := os.MkdirAll(logDir, 0o755); err != nil {
-			return fmt.Errorf("failed to create log directory: %w", err)
-		}
-
-		// Open log file
-		file, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
-		if err != nil {
-			return fmt.Errorf("failed to open log file: %w", err)
-		}
-
-		if deferred != nil {
-			// TUI mode with explicit log file - write to both file and deferred buffer
-			output = io.MultiWriter(file, deferred)
-		} else {
-			// Write to both console and file
-			output = io.MultiWriter(
-				zerolog.ConsoleWriter{Out: os.Stderr},
-				file,
-			)
-		}
-	} else if deferred != nil {
-		// TUI mode without log file - buffer for display after exit
-		output = deferred
-	}
-
-	log.Logger = log.Output(output).Level(parsedLevel)
-
-	return nil
-}
-
 func main() {
 	if err := setupLogger("info", "", nil); err != nil {
 		panic(err)
 	}
 
-	p := printer.New(os.Stderr)
-	ctx := printer.NewContext(context.Background(), p)
+	var (
+		p     = printer.New(os.Stderr)
+		ctx   = printer.NewContext(context.Background(), p)
+		flags = &commands.Flags{}
+	)
 
-	flags := &commands.Flags{}
 	var deferredLogs *utils.DeferredWriter
 
 	app := &cli.Command{
@@ -153,12 +114,14 @@ Run 'hive new' to create a new session from the current repository.`,
 			flags.Config = cfg
 
 			// Create service
-			store := jsonfile.New(cfg.SessionsFile())
-			exec := &executil.RealExecutor{}
-			gitExec := git.NewExecutor(cfg.GitPath, exec)
-			logger := log.With().Str("component", "hive").Logger()
-			flags.Service = hive.New(store, gitExec, cfg, exec, logger, os.Stdout, os.Stderr)
+			var (
+				store   = jsonfile.New(cfg.SessionsFile())
+				exec    = &executil.RealExecutor{}
+				gitExec = git.NewExecutor(cfg.GitPath, exec)
+				logger  = log.With().Str("component", "hive").Logger()
+			)
 
+			flags.Service = hive.New(store, gitExec, cfg, exec, logger, os.Stdout, os.Stderr)
 			return ctx, nil
 		},
 	}
@@ -195,4 +158,45 @@ Run 'hive new' to create a new session from the current repository.`,
 	}
 
 	os.Exit(exitCode)
+}
+
+func setupLogger(level string, logFile string, deferred io.Writer) error {
+	parsedLevel, err := zerolog.ParseLevel(level)
+	if err != nil {
+		return fmt.Errorf("failed to parse log level: %w", err)
+	}
+
+	var output io.Writer = zerolog.ConsoleWriter{Out: os.Stderr}
+
+	if logFile != "" {
+		// Create log directory if it doesn't exist
+		logDir := filepath.Dir(logFile)
+		if err := os.MkdirAll(logDir, 0o755); err != nil {
+			return fmt.Errorf("failed to create log directory: %w", err)
+		}
+
+		// Open log file
+		file, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+		if err != nil {
+			return fmt.Errorf("failed to open log file: %w", err)
+		}
+
+		if deferred != nil {
+			// TUI mode with explicit log file - write to both file and deferred buffer
+			output = io.MultiWriter(file, deferred)
+		} else {
+			// Write to both console and file
+			output = io.MultiWriter(
+				zerolog.ConsoleWriter{Out: os.Stderr},
+				file,
+			)
+		}
+	} else if deferred != nil {
+		// TUI mode without log file - buffer for display after exit
+		output = deferred
+	}
+
+	log.Logger = log.Output(output).Level(parsedLevel)
+
+	return nil
 }

@@ -70,13 +70,13 @@ func (p *Printer) FatalError(err error) {
 }
 
 // Errorf prints an error message in red
-func (p *Printer) Errorf(format string, args ...interface{}) {
+func (p *Printer) Errorf(format string, args ...any) {
 	msg := fmt.Sprintf(format, args...)
 	_, _ = p.writer.Write([]byte(p.colorize(ColorRed, Cross+" "+msg) + "\n"))
 }
 
 // Successf prints a success message in green
-func (p *Printer) Successf(format string, args ...interface{}) {
+func (p *Printer) Successf(format string, args ...any) {
 	msg := fmt.Sprintf(format, args...)
 	_, _ = p.writer.Write([]byte(p.colorize(ColorGreen, Check+" "+msg) + "\n"))
 }
@@ -90,13 +90,13 @@ func (p *Printer) Success(message string, details string) {
 }
 
 // Infof prints an info message in gray
-func (p *Printer) Infof(format string, args ...interface{}) {
+func (p *Printer) Infof(format string, args ...any) {
 	msg := fmt.Sprintf(format, args...)
 	_, _ = p.writer.Write([]byte(p.colorize(ColorGray, Dot+" "+msg) + "\n"))
 }
 
 // Printf prints a plain message without colors
-func (p *Printer) Printf(format string, args ...interface{}) {
+func (p *Printer) Printf(format string, args ...any) {
 	msg := fmt.Sprintf(format, args...)
 	_, _ = p.writer.Write([]byte(msg + "\n"))
 }
