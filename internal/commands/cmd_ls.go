@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"text/tabwriter"
 
+	"github.com/hay-kot/hive/internal/core/session"
 	"github.com/hay-kot/hive/internal/printer"
 	"github.com/urfave/cli/v3"
 )
@@ -44,12 +45,36 @@ func (cmd *LsCmd) run(ctx context.Context, c *cli.Command) error {
 		return nil
 	}
 
-	w := tabwriter.NewWriter(c.Root().Writer, 0, 0, 2, ' ', 0)
-	_, _ = fmt.Fprintln(w, "ID\tNAME\tSTATE\tPATH")
-
+	// Separate normal and corrupted sessions
+	var normal, corrupted []session.Session
 	for _, s := range sessions {
-		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", s.ID, s.Name, s.State, s.Path)
+		if s.State == session.StateCorrupted {
+			corrupted = append(corrupted, s)
+		} else {
+			normal = append(normal, s)
+		}
 	}
 
-	return w.Flush()
+	out := c.Root().Writer
+
+	if len(normal) > 0 {
+		w := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
+		_, _ = fmt.Fprintln(w, "ID\tNAME\tSTATE\tPATH")
+
+		for _, s := range normal {
+			_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", s.ID, s.Name, s.State, s.Path)
+		}
+
+		_ = w.Flush()
+	}
+
+	if len(corrupted) > 0 {
+		_, _ = fmt.Fprintln(out)
+		_, _ = fmt.Fprintln(out, "Corrupted sessions (run 'hive prune' to clean up):")
+		for _, s := range corrupted {
+			_, _ = fmt.Fprintf(out, "  %s\t%s\n", s.ID, s.Path)
+		}
+	}
+
+	return nil
 }

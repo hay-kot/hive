@@ -243,9 +243,9 @@ func (s *Service) DeleteSession(ctx context.Context, id string) error {
 	return nil
 }
 
-// Prune removes all recycled sessions and their directories.
+// Prune removes all recycled and corrupted sessions and their directories.
 func (s *Service) Prune(ctx context.Context) (int, error) {
-	s.log.Info().Msg("pruning recycled sessions")
+	s.log.Info().Msg("pruning sessions")
 
 	sessions, err := s.sessions.List(ctx)
 	if err != nil {
@@ -254,12 +254,12 @@ func (s *Service) Prune(ctx context.Context) (int, error) {
 
 	count := 0
 	for _, sess := range sessions {
-		if sess.State != session.StateRecycled {
+		if sess.State != session.StateRecycled && sess.State != session.StateCorrupted {
 			continue
 		}
 
 		if err := s.DeleteSession(ctx, sess.ID); err != nil {
-			s.log.Warn().Err(err).Str("session_id", sess.ID).Msg("failed to prune session")
+			s.log.Warn().Err(err).Str("session_id", sess.ID).Str("state", string(sess.State)).Msg("failed to prune session")
 			continue
 		}
 
