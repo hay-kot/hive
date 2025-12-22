@@ -2,7 +2,6 @@ package hive
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"math/rand"
@@ -72,26 +71,27 @@ func (s *Service) CreateSession(ctx context.Context, opts CreateOptions) (*sessi
 		s.log.Debug().Str("remote", remote).Msg("detected remote")
 	}
 
-	// Check for recyclable session
-	recyclable, err := s.sessions.FindRecyclable(ctx, remote)
-	if err != nil && !errors.Is(err, session.ErrNoRecyclable) {
-		return nil, fmt.Errorf("find recyclable: %w", err)
-	}
-
 	var sess session.Session
-
 	slug := session.Slugify(opts.Name)
 
-	if err == nil {
+	// Try to find and validate a recyclable session
+	recyclable := s.findValidRecyclable(ctx, remote)
+
+	if recyclable != nil {
 		// Reuse existing recycled session (already cleaned up when marked for recycle)
-		s.log.Debug().Str("session_id", recyclable.ID).Msg("found recyclable session")
+		s.log.Debug().Str("session_id", recyclable.ID).Msg("found valid recyclable session")
 
 		// Pull latest changes before running hooks
 		s.log.Debug().Str("path", recyclable.Path).Msg("pulling latest changes")
 		if err := s.git.Pull(ctx, recyclable.Path); err != nil {
-			return nil, fmt.Errorf("pull latest: %w", err)
+			// Pull failed - mark as corrupted and fall through to clone
+			s.log.Warn().Err(err).Str("session_id", recyclable.ID).Msg("pull failed, marking corrupted")
+			s.markCorrupted(ctx, recyclable)
+			recyclable = nil
 		}
+	}
 
+	if recyclable != nil {
 		// Rename directory to new session name pattern
 		repoName := extractRepoName(remote)
 		newPath := filepath.Join(s.config.ReposDir(), fmt.Sprintf("%s-%s-%s", repoName, slug, recyclable.ID))
@@ -100,7 +100,7 @@ func (s *Service) CreateSession(ctx context.Context, opts CreateOptions) (*sessi
 			return nil, fmt.Errorf("rename recycled directory: %w", err)
 		}
 
-		sess = recyclable
+		sess = *recyclable
 		sess.Name = opts.Name
 		sess.Slug = slug
 		sess.Path = newPath
@@ -108,7 +108,7 @@ func (s *Service) CreateSession(ctx context.Context, opts CreateOptions) (*sessi
 		sess.State = session.StateActive
 		sess.UpdatedAt = time.Now()
 	} else {
-		// Create new session
+		// Create new session (either no recyclable found or it was corrupted)
 		id := generateID()
 		repoName := extractRepoName(remote)
 		path := filepath.Join(s.config.ReposDir(), fmt.Sprintf("%s-%s-%s", repoName, slug, id))
@@ -301,4 +301,54 @@ func extractRepoName(remote string) string {
 	}
 
 	return remote
+}
+
+// findValidRecyclable finds a recyclable session and validates it.
+// Returns nil if none found or all candidates are corrupted.
+func (s *Service) findValidRecyclable(ctx context.Context, remote string) *session.Session {
+	sessions, err := s.sessions.List(ctx)
+	if err != nil {
+		s.log.Warn().Err(err).Msg("failed to list sessions")
+		return nil
+	}
+
+	for i := range sessions {
+		sess := &sessions[i]
+
+		// Skip non-recyclable sessions
+		if sess.State != session.StateRecycled || sess.Remote != remote {
+			continue
+		}
+
+		// Validate the repository
+		if err := s.git.IsValidRepo(ctx, sess.Path); err != nil {
+			s.log.Warn().Err(err).Str("session_id", sess.ID).Str("path", sess.Path).Msg("corrupted session found")
+			s.markCorrupted(ctx, sess)
+			continue
+		}
+
+		return sess
+	}
+
+	return nil
+}
+
+// markCorrupted marks a session as corrupted and optionally deletes it.
+func (s *Service) markCorrupted(ctx context.Context, sess *session.Session) {
+	sess.MarkCorrupted(time.Now())
+
+	if s.config.AutoDeleteCorrupted {
+		s.log.Info().Str("session_id", sess.ID).Msg("auto-deleting corrupted session")
+		if err := s.DeleteSession(ctx, sess.ID); err != nil {
+			s.log.Warn().Err(err).Str("session_id", sess.ID).Msg("failed to delete corrupted session, marking instead")
+			// Fall through to save as corrupted
+			if err := s.sessions.Save(ctx, *sess); err != nil {
+				s.log.Error().Err(err).Str("session_id", sess.ID).Msg("failed to save corrupted session")
+			}
+		}
+	} else {
+		if err := s.sessions.Save(ctx, *sess); err != nil {
+			s.log.Error().Err(err).Str("session_id", sess.ID).Msg("failed to save corrupted session")
+		}
+	}
 }

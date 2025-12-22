@@ -31,12 +31,13 @@ var defaultKeybindings = map[string]Keybinding{
 
 // Config holds the application configuration.
 type Config struct {
-	Commands    Commands              `yaml:"commands"`
-	Git         GitConfig             `yaml:"git"`
-	GitPath     string                `yaml:"git_path"`
-	Keybindings map[string]Keybinding `yaml:"keybindings"`
-	Hooks       []Hook                `yaml:"hooks"`
-	DataDir     string                `yaml:"-"` // set by caller, not from config file
+	Commands            Commands              `yaml:"commands"`
+	Git                 GitConfig             `yaml:"git"`
+	GitPath             string                `yaml:"git_path"`
+	Keybindings         map[string]Keybinding `yaml:"keybindings"`
+	Hooks               []Hook                `yaml:"hooks"`
+	AutoDeleteCorrupted bool                  `yaml:"auto_delete_corrupted"`
+	DataDir             string                `yaml:"-"` // set by caller, not from config file
 }
 
 // GitConfig holds git-related configuration.
@@ -76,8 +77,9 @@ func DefaultConfig() Config {
 		Git: GitConfig{
 			StatusWorkers: 3,
 		},
-		GitPath:     "git",
-		Keybindings: map[string]Keybinding{},
+		GitPath:             "git",
+		Keybindings:         map[string]Keybinding{},
+		AutoDeleteCorrupted: true,
 	}
 }
 
