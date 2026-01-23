@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/hay-kot/criterio"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -27,9 +28,8 @@ func TestValidateDeep_ValidConfig(t *testing.T) {
 		},
 	}
 
-	result := cfg.ValidateDeep("")
-	assert.True(t, result.IsValid(), "expected valid config, got errors: %v", result.Errors)
-	assert.Empty(t, result.Errors)
+	err := cfg.ValidateDeep("")
+	assert.NoError(t, err, "expected valid config")
 }
 
 func TestValidateDeep_InvalidSpawnTemplate(t *testing.T) {
@@ -41,12 +41,13 @@ func TestValidateDeep_InvalidSpawnTemplate(t *testing.T) {
 		},
 	}
 
-	result := cfg.ValidateDeep("")
+	err := cfg.ValidateDeep("")
 
-	assert.False(t, result.IsValid())
-	assert.Len(t, result.Errors, 2)
-	assert.Equal(t, "Spawn Commands", result.Errors[0].Category)
-	assert.Contains(t, result.Errors[0].Message, "template error")
+	var fieldErrs criterio.FieldErrors
+	require.ErrorAs(t, err, &fieldErrs)
+	assert.Len(t, fieldErrs, 2)
+	assert.Contains(t, fieldErrs[0].Field, "commands.spawn")
+	assert.Contains(t, fieldErrs[0].Err.Error(), "template error")
 }
 
 func TestValidateDeep_InvalidHookPattern(t *testing.T) {
@@ -58,12 +59,13 @@ func TestValidateDeep_InvalidHookPattern(t *testing.T) {
 		},
 	}
 
-	result := cfg.ValidateDeep("")
+	err := cfg.ValidateDeep("")
 
-	assert.False(t, result.IsValid())
-	assert.Len(t, result.Errors, 1)
-	assert.Equal(t, "Hooks", result.Errors[0].Category)
-	assert.Contains(t, result.Errors[0].Message, "invalid regex")
+	var fieldErrs criterio.FieldErrors
+	require.ErrorAs(t, err, &fieldErrs)
+	assert.Len(t, fieldErrs, 1)
+	assert.Contains(t, fieldErrs[0].Field, "hooks")
+	assert.Contains(t, fieldErrs[0].Err.Error(), "invalid regex")
 }
 
 func TestValidateDeep_KeybindingBothActionAndSh(t *testing.T) {
@@ -75,11 +77,12 @@ func TestValidateDeep_KeybindingBothActionAndSh(t *testing.T) {
 		},
 	}
 
-	result := cfg.ValidateDeep("")
+	err := cfg.ValidateDeep("")
 
-	assert.False(t, result.IsValid())
-	assert.Len(t, result.Errors, 1)
-	assert.Contains(t, result.Errors[0].Message, "cannot have both")
+	var fieldErrs criterio.FieldErrors
+	require.ErrorAs(t, err, &fieldErrs)
+	assert.Len(t, fieldErrs, 1)
+	assert.Contains(t, fieldErrs[0].Err.Error(), "cannot have both")
 }
 
 func TestValidateDeep_KeybindingNeitherActionNorSh(t *testing.T) {
@@ -91,11 +94,12 @@ func TestValidateDeep_KeybindingNeitherActionNorSh(t *testing.T) {
 		},
 	}
 
-	result := cfg.ValidateDeep("")
+	err := cfg.ValidateDeep("")
 
-	assert.False(t, result.IsValid())
-	assert.Len(t, result.Errors, 1)
-	assert.Contains(t, result.Errors[0].Message, "must have either")
+	var fieldErrs criterio.FieldErrors
+	require.ErrorAs(t, err, &fieldErrs)
+	assert.Len(t, fieldErrs, 1)
+	assert.Contains(t, fieldErrs[0].Err.Error(), "must have either")
 }
 
 func TestValidateDeep_KeybindingInvalidAction(t *testing.T) {
@@ -107,11 +111,12 @@ func TestValidateDeep_KeybindingInvalidAction(t *testing.T) {
 		},
 	}
 
-	result := cfg.ValidateDeep("")
+	err := cfg.ValidateDeep("")
 
-	assert.False(t, result.IsValid())
-	assert.Len(t, result.Errors, 1)
-	assert.Contains(t, result.Errors[0].Message, "invalid action")
+	var fieldErrs criterio.FieldErrors
+	require.ErrorAs(t, err, &fieldErrs)
+	assert.Len(t, fieldErrs, 1)
+	assert.Contains(t, fieldErrs[0].Err.Error(), "invalid action")
 }
 
 func TestValidateDeep_KeybindingInvalidShTemplate(t *testing.T) {
@@ -123,11 +128,12 @@ func TestValidateDeep_KeybindingInvalidShTemplate(t *testing.T) {
 		},
 	}
 
-	result := cfg.ValidateDeep("")
+	err := cfg.ValidateDeep("")
 
-	assert.False(t, result.IsValid())
-	assert.Len(t, result.Errors, 1)
-	assert.Contains(t, result.Errors[0].Message, "template error")
+	var fieldErrs criterio.FieldErrors
+	require.ErrorAs(t, err, &fieldErrs)
+	assert.Len(t, fieldErrs, 1)
+	assert.Contains(t, fieldErrs[0].Err.Error(), "template error")
 }
 
 func TestValidateDeep_KeybindingValidShTemplate(t *testing.T) {
@@ -139,9 +145,8 @@ func TestValidateDeep_KeybindingValidShTemplate(t *testing.T) {
 		},
 	}
 
-	result := cfg.ValidateDeep("")
-
-	assert.True(t, result.IsValid())
+	err := cfg.ValidateDeep("")
+	assert.NoError(t, err)
 }
 
 func TestValidateDeep_GitPathNotFound(t *testing.T) {
@@ -150,12 +155,14 @@ func TestValidateDeep_GitPathNotFound(t *testing.T) {
 		DataDir: t.TempDir(),
 	}
 
-	result := cfg.ValidateDeep("")
+	err := cfg.ValidateDeep("")
 
-	assert.False(t, result.IsValid())
+	var fieldErrs criterio.FieldErrors
+	require.ErrorAs(t, err, &fieldErrs)
+
 	hasGitError := false
-	for _, e := range result.Errors {
-		if e.Item == "git_path" {
+	for _, e := range fieldErrs {
+		if e.Field == "git_path" {
 			hasGitError = true
 			break
 		}
@@ -172,12 +179,14 @@ func TestValidateDeep_DataDirIsFile(t *testing.T) {
 		DataDir: tmpFile,
 	}
 
-	result := cfg.ValidateDeep("")
+	err := cfg.ValidateDeep("")
 
-	assert.False(t, result.IsValid())
+	var fieldErrs criterio.FieldErrors
+	require.ErrorAs(t, err, &fieldErrs)
+
 	hasDataDirError := false
-	for _, e := range result.Errors {
-		if e.Item == "data_dir" {
+	for _, e := range fieldErrs {
+		if e.Field == "data_dir" {
 			hasDataDirError = true
 			break
 		}
@@ -193,12 +202,14 @@ func TestValidateDeep_ConfigFileIsDirectory(t *testing.T) {
 		DataDir: t.TempDir(),
 	}
 
-	result := cfg.ValidateDeep(tmpDir)
+	err := cfg.ValidateDeep(tmpDir)
 
-	assert.False(t, result.IsValid())
+	var fieldErrs criterio.FieldErrors
+	require.ErrorAs(t, err, &fieldErrs)
+
 	hasConfigError := false
-	for _, e := range result.Errors {
-		if e.Item == "config file" {
+	for _, e := range fieldErrs {
+		if e.Field == "config_file" {
 			hasConfigError = true
 			break
 		}
@@ -206,7 +217,7 @@ func TestValidateDeep_ConfigFileIsDirectory(t *testing.T) {
 	assert.True(t, hasConfigError, "expected error about config file being a directory")
 }
 
-func TestValidateDeep_EmptyHookCommands(t *testing.T) {
+func TestWarnings_EmptyHookCommands(t *testing.T) {
 	cfg := &Config{
 		GitPath: "git",
 		DataDir: t.TempDir(),
@@ -215,12 +226,14 @@ func TestValidateDeep_EmptyHookCommands(t *testing.T) {
 		},
 	}
 
-	result := cfg.ValidateDeep("")
+	// Should be valid
+	err := cfg.ValidateDeep("")
+	require.NoError(t, err)
 
-	// Should be valid but have a warning
-	assert.True(t, result.IsValid())
+	// But should have a warning
+	warnings := cfg.Warnings()
 	hasWarning := false
-	for _, w := range result.Warnings {
+	for _, w := range warnings {
 		if w.Category == "Hooks" && strings.Contains(w.Message, "no commands") {
 			hasWarning = true
 			break
@@ -229,7 +242,7 @@ func TestValidateDeep_EmptyHookCommands(t *testing.T) {
 	assert.True(t, hasWarning, "expected warning about empty hook commands")
 }
 
-func TestValidateDeep_EmptyRecycleCommands(t *testing.T) {
+func TestWarnings_EmptyRecycleCommands(t *testing.T) {
 	cfg := &Config{
 		GitPath: "git",
 		DataDir: t.TempDir(),
@@ -238,37 +251,18 @@ func TestValidateDeep_EmptyRecycleCommands(t *testing.T) {
 		},
 	}
 
-	result := cfg.ValidateDeep("")
+	// Should be valid
+	err := cfg.ValidateDeep("")
+	require.NoError(t, err)
 
-	// Should be valid but have a warning
-	assert.True(t, result.IsValid())
+	// But should have a warning
+	warnings := cfg.Warnings()
 	hasWarning := false
-	for _, w := range result.Warnings {
+	for _, w := range warnings {
 		if w.Category == "Recycle Commands" {
 			hasWarning = true
 			break
 		}
 	}
 	assert.True(t, hasWarning, "expected warning about empty recycle commands")
-}
-
-func TestValidationResult_IsValid(t *testing.T) {
-	t.Run("empty result is valid", func(t *testing.T) {
-		result := &ValidationResult{}
-		assert.True(t, result.IsValid())
-	})
-
-	t.Run("result with only warnings is valid", func(t *testing.T) {
-		result := &ValidationResult{
-			Warnings: []ValidationWarning{{Message: "test"}},
-		}
-		assert.True(t, result.IsValid())
-	})
-
-	t.Run("result with errors is not valid", func(t *testing.T) {
-		result := &ValidationResult{
-			Errors: []ValidationError{{Message: "test"}},
-		}
-		assert.False(t, result.IsValid())
-	})
 }

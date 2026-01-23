@@ -3,7 +3,9 @@ package commands
 import (
 	"context"
 	"encoding/json"
+	"errors"
 
+	"github.com/hay-kot/criterio"
 	"github.com/hay-kot/hive/internal/core/config"
 	"github.com/hay-kot/hive/internal/printer"
 	"github.com/urfave/cli/v3"
@@ -49,26 +51,45 @@ func (cmd *ConfigValidateCmd) Register(app *cli.Command) *cli.Command {
 func (cmd *ConfigValidateCmd) run(ctx context.Context, c *cli.Command) error {
 	p := printer.Ctx(ctx)
 
-	result := cmd.flags.Config.ValidateDeep(cmd.flags.ConfigPath)
+	err := cmd.flags.Config.ValidateDeep(cmd.flags.ConfigPath)
+	warnings := cmd.flags.Config.Warnings()
 
 	if cmd.format == "json" {
-		return cmd.outputJSON(c, result)
+		return cmd.outputJSON(c, err, warnings)
 	}
 
-	return cmd.outputText(p, result)
+	return cmd.outputText(p, err, warnings)
 }
 
-func (cmd *ConfigValidateCmd) outputJSON(c *cli.Command, result *config.ValidationResult) error {
+func (cmd *ConfigValidateCmd) outputJSON(c *cli.Command, validationErr error, warnings []config.ValidationWarning) error {
+	type fieldError struct {
+		Field   string `json:"field"`
+		Message string `json:"message"`
+	}
+
 	out := struct {
 		Valid    bool                       `json:"valid"`
-		Errors   []config.ValidationError   `json:"errors,omitempty"`
+		Errors   []fieldError               `json:"errors,omitempty"`
 		Warnings []config.ValidationWarning `json:"warnings,omitempty"`
-		Checks   []config.ValidationCheck   `json:"checks,omitempty"`
 	}{
-		Valid:    result.IsValid(),
-		Errors:   result.Errors,
-		Warnings: result.Warnings,
-		Checks:   result.Checks,
+		Valid:    validationErr == nil,
+		Warnings: warnings,
+	}
+
+	if validationErr != nil {
+		var fieldErrs criterio.FieldErrors
+		if errors.As(validationErr, &fieldErrs) {
+			for _, fe := range fieldErrs {
+				out.Errors = append(out.Errors, fieldError{
+					Field:   fe.Field,
+					Message: fe.Err.Error(),
+				})
+			}
+		} else {
+			out.Errors = append(out.Errors, fieldError{
+				Message: validationErr.Error(),
+			})
+		}
 	}
 
 	enc := json.NewEncoder(c.Root().Writer)
@@ -76,41 +97,55 @@ func (cmd *ConfigValidateCmd) outputJSON(c *cli.Command, result *config.Validati
 	return enc.Encode(out)
 }
 
-func (cmd *ConfigValidateCmd) outputText(p *printer.Printer, result *config.ValidationResult) error {
-	// Print successful checks
-	for _, check := range result.Checks {
-		p.Successf("%s: %s", check.Category, check.Message)
-		for _, detail := range check.Details {
-			p.Printf("  %s", detail)
+func (cmd *ConfigValidateCmd) outputText(p *printer.Printer, validationErr error, warnings []config.ValidationWarning) error {
+	// Print errors first (grouped)
+	errorCount := 0
+	if validationErr != nil {
+		p.Printf("Errors")
+
+		var fieldErrs criterio.FieldErrors
+		if errors.As(validationErr, &fieldErrs) {
+			errorCount = len(fieldErrs)
+			for _, fe := range fieldErrs {
+				if fe.Field != "" {
+					p.Printf("  %s %s: %s", printer.Cross, fe.Field, fe.Err.Error())
+				} else {
+					p.Printf("  %s %s", printer.Cross, fe.Err.Error())
+				}
+			}
+		} else {
+			errorCount = 1
+			p.Printf("  %s %s", printer.Cross, validationErr.Error())
 		}
 	}
 
-	// Print warnings
-	for _, warn := range result.Warnings {
-		p.Infof("%s: %s", warn.Category, warn.Message)
-		if warn.Item != "" {
-			p.Printf("  Item: %s", warn.Item)
+	// Print warnings second (grouped)
+	if len(warnings) > 0 {
+		if errorCount > 0 {
+			p.Printf("")
 		}
-	}
+		p.Printf("Warnings")
 
-	// Print errors
-	for _, err := range result.Errors {
-		p.Errorf("%s: %s", err.Category, err.Message)
-		if err.Item != "" {
-			p.Printf("  Item: %s", err.Item)
-		}
-		if err.Fix != "" {
-			p.Printf("  Fix: %s", err.Fix)
+		for _, warn := range warnings {
+			msg := warn.Message
+			if warn.Item != "" {
+				msg = warn.Item + ": " + msg
+			}
+			p.Printf("  %s %s: %s", printer.Dot, warn.Category, msg)
 		}
 	}
 
 	// Print summary
 	p.Printf("")
-	if result.IsValid() {
-		p.Successf("Configuration is valid")
+	if validationErr == nil {
+		if len(warnings) > 0 {
+			p.Successf("Configuration is valid (%d warning(s))", len(warnings))
+		} else {
+			p.Successf("Configuration is valid")
+		}
 		return nil
 	}
 
-	p.Errorf("%d error(s) found", result.ErrorCount())
+	p.Errorf("%d error(s), %d warning(s)", errorCount, len(warnings))
 	return cli.Exit("", 1)
 }

@@ -3,9 +3,11 @@ package config
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 
+	"github.com/hay-kot/criterio"
 	"gopkg.in/yaml.v3"
 )
 
@@ -136,47 +138,42 @@ func mergeKeybindings(defaults, user map[string]Keybinding) map[string]Keybindin
 	result := make(map[string]Keybinding, len(defaults)+len(user))
 
 	// Copy defaults first
-	for k, v := range defaults {
-		result[k] = v
-	}
-
-	// Override with user config
-	for k, v := range user {
-		result[k] = v
-	}
+	maps.Copy(result, defaults)
+	maps.Copy(result, user)
 
 	return result
 }
 
 // Validate checks that the configuration is valid.
 func (c *Config) Validate() error {
-	if c.GitPath == "" {
-		return fmt.Errorf("git_path cannot be empty")
-	}
+	return criterio.ValidateStruct(
+		criterio.Run("git_path", c.GitPath, criterio.Required[string]),
+		criterio.Run("data_dir", c.DataDir, criterio.Required[string]),
+		criterio.Run("git.status_workers", c.Git.StatusWorkers, criterio.Min(1)),
+		c.validateKeybindingsBasic(),
+	)
+}
 
-	if c.DataDir == "" {
-		return fmt.Errorf("data directory cannot be empty")
-	}
-
-	if c.Git.StatusWorkers < 1 {
-		return fmt.Errorf("git.status_workers must be at least 1")
-	}
-
+// validateKeybindingsBasic performs basic keybinding validation for the Validate() method.
+func (c *Config) validateKeybindingsBasic() error {
+	var errs criterio.FieldErrorsBuilder
 	for key, kb := range c.Keybindings {
+		field := fmt.Sprintf("keybindings[%q]", key)
+
 		if kb.Action == "" && kb.Sh == "" {
-			return fmt.Errorf("keybinding %q must have either action or sh", key)
+			errs = errs.Append(field, fmt.Errorf("must have either action or sh"))
+			continue
 		}
 		if kb.Action != "" && kb.Sh != "" {
-			return fmt.Errorf("keybinding %q cannot have both action and sh", key)
+			errs = errs.Append(field, fmt.Errorf("cannot have both action and sh"))
+			continue
 		}
-		if kb.Action != "" {
-			if !isValidAction(kb.Action) {
-				return fmt.Errorf("keybinding %q has invalid action %q", key, kb.Action)
-			}
+		if kb.Action != "" && !isValidAction(kb.Action) {
+			errs = errs.Append(field, fmt.Errorf("invalid action %q", kb.Action))
 		}
 	}
 
-	return nil
+	return errs.ToError()
 }
 
 // ReposDir returns the path where cloned repositories are stored.

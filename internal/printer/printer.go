@@ -2,10 +2,13 @@ package printer
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"strings"
+
+	"github.com/hay-kot/criterio"
 )
 
 // ANSI color codes (Tokyo Night palette)
@@ -59,6 +62,13 @@ func (p *Printer) FatalError(err error) {
 		return
 	}
 
+	// Check if the error contains criterio.FieldErrors for better formatting
+	var fieldErrs criterio.FieldErrors
+	if errors.As(err, &fieldErrs) {
+		p.printValidationErrors(err, fieldErrs)
+		return
+	}
+
 	lines := []string{
 		p.colorize(ColorRed, "╭ Error"),
 		p.colorize(ColorRed, "│") + " " + p.colorize(ColorGray, err.Error()),
@@ -67,6 +77,37 @@ func (p *Printer) FatalError(err error) {
 
 	output := strings.Join(lines, "\n") + "\n"
 	_, _ = p.writer.Write([]byte(output))
+}
+
+// printValidationErrors formats criterio.FieldErrors nicely
+func (p *Printer) printValidationErrors(wrappedErr error, fieldErrs criterio.FieldErrors) {
+	// Extract the context from the wrapped error (e.g., "load config: invalid config:")
+	errStr := wrappedErr.Error()
+	fieldErrStr := fieldErrs.Error()
+
+	// Find where the field errors start in the wrapped error
+	context := ""
+	if idx := strings.Index(errStr, fieldErrStr); idx > 0 {
+		context = strings.TrimSuffix(errStr[:idx], ": ")
+	}
+
+	_, _ = p.writer.Write([]byte(p.colorize(ColorRed, "╭ Validation Error") + "\n"))
+
+	if context != "" {
+		_, _ = p.writer.Write([]byte(p.colorize(ColorRed, "│") + " " + p.colorize(ColorGray, context) + "\n"))
+		_, _ = p.writer.Write([]byte(p.colorize(ColorRed, "│") + "\n"))
+	}
+
+	for _, fe := range fieldErrs {
+		line := p.colorize(ColorRed, "│") + " " + p.colorize(ColorRed, Cross) + " "
+		if fe.Field != "" {
+			line += p.colorize(ColorGray, fe.Field+": ")
+		}
+		line += fe.Err.Error()
+		_, _ = p.writer.Write([]byte(line + "\n"))
+	}
+
+	_, _ = p.writer.Write([]byte(p.colorize(ColorRed, "╵") + "\n"))
 }
 
 // Errorf prints an error message in red

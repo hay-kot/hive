@@ -8,46 +8,9 @@ import (
 	"regexp"
 	"sort"
 	"text/template"
+
+	"github.com/hay-kot/criterio"
 )
-
-// ValidationResult holds the outcome of configuration validation.
-type ValidationResult struct {
-	Errors   []ValidationError
-	Warnings []ValidationWarning
-	Checks   []ValidationCheck
-}
-
-// ValidationError represents a configuration error.
-type ValidationError struct {
-	Category string `json:"category"`
-	Item     string `json:"item,omitempty"`
-	Message  string `json:"message"`
-	Fix      string `json:"fix,omitempty"`
-}
-
-// ValidationWarning represents a non-fatal configuration issue.
-type ValidationWarning struct {
-	Category string `json:"category"`
-	Item     string `json:"item,omitempty"`
-	Message  string `json:"message"`
-}
-
-// ValidationCheck represents a successful validation check.
-type ValidationCheck struct {
-	Category string   `json:"category"`
-	Message  string   `json:"message"`
-	Details  []string `json:"details,omitempty"`
-}
-
-// IsValid returns true if there are no errors.
-func (r *ValidationResult) IsValid() bool {
-	return len(r.Errors) == 0
-}
-
-// ErrorCount returns the number of errors.
-func (r *ValidationResult) ErrorCount() int {
-	return len(r.Errors)
-}
 
 // SpawnTemplateData defines available fields for spawn command templates.
 type SpawnTemplateData struct {
@@ -64,176 +27,39 @@ type KeybindingTemplateData struct {
 	Name   string
 }
 
+// ValidationWarning represents a non-fatal configuration issue.
+type ValidationWarning struct {
+	Category string `json:"category"`
+	Item     string `json:"item,omitempty"`
+	Message  string `json:"message"`
+}
+
 // ValidateDeep performs comprehensive validation of the configuration.
 // Unlike Validate(), this checks template syntax, regex patterns, and file access.
-func (c *Config) ValidateDeep(configPath string) *ValidationResult {
-	result := &ValidationResult{}
-
-	c.validateFileAccess(result, configPath)
-	c.validateSpawnCommands(result)
-	c.validateRecycleCommands(result)
-	c.validateHooks(result)
-	c.validateKeybindings(result)
-
-	return result
+func (c *Config) ValidateDeep(configPath string) error {
+	return criterio.ValidateStruct(
+		c.validateFileAccess(configPath),
+		c.validateSpawnCommands(),
+		c.validateHooks(),
+		c.validateKeybindings(),
+	)
 }
 
-// validateFileAccess checks config file, data directory, and git executable.
-func (c *Config) validateFileAccess(result *ValidationResult, configPath string) {
-	details := []string{}
+// Warnings returns non-fatal configuration issues.
+func (c *Config) Warnings() []ValidationWarning {
+	var warnings []ValidationWarning
 
-	// Check config file
-	if configPath != "" {
-		if info, err := os.Stat(configPath); err == nil {
-			details = append(details, fmt.Sprintf("Config file: %s (found)", configPath))
-			if info.IsDir() {
-				result.Errors = append(result.Errors, ValidationError{
-					Category: "File Access",
-					Item:     "config file",
-					Message:  fmt.Sprintf("%s is a directory, not a file", configPath),
-				})
-			}
-		} else if os.IsNotExist(err) {
-			details = append(details, fmt.Sprintf("Config file: %s (not found, using defaults)", configPath))
-		} else {
-			result.Errors = append(result.Errors, ValidationError{
-				Category: "File Access",
-				Item:     "config file",
-				Message:  fmt.Sprintf("cannot access %s: %v", configPath, err),
-			})
-		}
-	}
-
-	// Check git path
-	if c.GitPath != "" {
-		gitPath, err := exec.LookPath(c.GitPath)
-		if err != nil {
-			result.Errors = append(result.Errors, ValidationError{
-				Category: "File Access",
-				Item:     "git_path",
-				Message:  fmt.Sprintf("git executable not found: %s", c.GitPath),
-				Fix:      "Set git_path to the full path of your git executable",
-			})
-		} else {
-			details = append(details, fmt.Sprintf("Git path: %s (found)", gitPath))
-		}
-	}
-
-	// Check data directory
-	if c.DataDir != "" {
-		if info, err := os.Stat(c.DataDir); err == nil {
-			if !info.IsDir() {
-				result.Errors = append(result.Errors, ValidationError{
-					Category: "File Access",
-					Item:     "data_dir",
-					Message:  fmt.Sprintf("%s exists but is not a directory", c.DataDir),
-				})
-			} else {
-				details = append(details, fmt.Sprintf("Data directory: %s (exists)", c.DataDir))
-			}
-		} else if os.IsNotExist(err) {
-			details = append(details, fmt.Sprintf("Data directory: %s (will be created)", c.DataDir))
-		} else {
-			result.Errors = append(result.Errors, ValidationError{
-				Category: "File Access",
-				Item:     "data_dir",
-				Message:  fmt.Sprintf("cannot access %s: %v", c.DataDir, err),
-			})
-		}
-	}
-
-	if len(details) > 0 {
-		result.Checks = append(result.Checks, ValidationCheck{
-			Category: "File Access",
-			Message:  "File paths validated",
-			Details:  details,
-		})
-	}
-}
-
-// validateSpawnCommands checks template syntax for spawn commands.
-func (c *Config) validateSpawnCommands(result *ValidationResult) {
-	if len(c.Commands.Spawn) == 0 {
-		result.Checks = append(result.Checks, ValidationCheck{
-			Category: "Spawn Commands",
-			Message:  "No spawn commands defined",
-		})
-		return
-	}
-
-	details := []string{}
-	for i, cmd := range c.Commands.Spawn {
-		if err := validateTemplate(cmd, SpawnTemplateData{}); err != nil {
-			result.Errors = append(result.Errors, ValidationError{
-				Category: "Spawn Commands",
-				Item:     fmt.Sprintf("command %d", i),
-				Message:  fmt.Sprintf("template error: %v", err),
-				Fix:      "Check template syntax. Available variables: {{.Path}}, {{.Name}}, {{.Prompt}}",
-			})
-		} else {
-			details = append(details, fmt.Sprintf("Command %d: valid template", i))
-		}
-	}
-
-	if len(details) > 0 {
-		result.Checks = append(result.Checks, ValidationCheck{
-			Category: "Spawn Commands",
-			Message:  fmt.Sprintf("%d command(s) defined", len(c.Commands.Spawn)),
-			Details:  details,
-		})
-	}
-}
-
-// validateRecycleCommands checks recycle commands (no templating, just presence).
-func (c *Config) validateRecycleCommands(result *ValidationResult) {
 	if len(c.Commands.Recycle) == 0 {
-		result.Warnings = append(result.Warnings, ValidationWarning{
+		warnings = append(warnings, ValidationWarning{
 			Category: "Recycle Commands",
 			Item:     "commands",
 			Message:  "No recycle commands defined; sessions will only be marked as recycled",
 		})
-		return
 	}
 
-	details := make([]string, len(c.Commands.Recycle))
-	for i, cmd := range c.Commands.Recycle {
-		details[i] = fmt.Sprintf("Command %d: %s", i, cmd)
-	}
-
-	result.Checks = append(result.Checks, ValidationCheck{
-		Category: "Recycle Commands",
-		Message:  fmt.Sprintf("%d command(s) defined", len(c.Commands.Recycle)),
-		Details:  details,
-	})
-}
-
-// validateHooks checks hook patterns are valid regex.
-func (c *Config) validateHooks(result *ValidationResult) {
-	if len(c.Hooks) == 0 {
-		result.Checks = append(result.Checks, ValidationCheck{
-			Category: "Hooks",
-			Message:  "No hooks defined",
-		})
-		return
-	}
-
-	details := []string{}
 	for i, hook := range c.Hooks {
-		// Check pattern is valid regex
-		if _, err := regexp.Compile(hook.Pattern); err != nil {
-			result.Errors = append(result.Errors, ValidationError{
-				Category: "Hooks",
-				Item:     fmt.Sprintf("pattern %d", i),
-				Message:  fmt.Sprintf("invalid regex %q: %v", hook.Pattern, err),
-				Fix:      "Use valid regex syntax. Note: hive uses regex, not glob patterns",
-			})
-		} else {
-			details = append(details, fmt.Sprintf("Pattern %d: %s (valid regex)", i, hook.Pattern))
-		}
-
-		// Check commands are present
 		if len(hook.Commands) == 0 {
-			result.Warnings = append(result.Warnings, ValidationWarning{
+			warnings = append(warnings, ValidationWarning{
 				Category: "Hooks",
 				Item:     fmt.Sprintf("hook %d", i),
 				Message:  "hook has no commands defined",
@@ -241,23 +67,91 @@ func (c *Config) validateHooks(result *ValidationResult) {
 		}
 	}
 
-	if len(details) > 0 {
-		result.Checks = append(result.Checks, ValidationCheck{
-			Category: "Hooks",
-			Message:  fmt.Sprintf("%d hook(s) defined", len(c.Hooks)),
-			Details:  details,
-		})
+	return warnings
+}
+
+// validateFileAccess checks config file, data directory, and git executable.
+func (c *Config) validateFileAccess(configPath string) error {
+	return criterio.ValidateStruct(
+		validateConfigFile(configPath),
+		criterio.Run("git_path", c.GitPath, gitExecutableExists),
+		criterio.Run("data_dir", c.DataDir, isDirectoryOrNotExist),
+	)
+}
+
+func validateConfigFile(configPath string) error {
+	if configPath == "" {
+		return nil
 	}
+
+	info, err := os.Stat(configPath)
+	if os.IsNotExist(err) {
+		return nil // not found is fine, using defaults
+	}
+	if err != nil {
+		return criterio.NewFieldErrors("config_file", fmt.Errorf("cannot access: %w", err))
+	}
+	if info.IsDir() {
+		return criterio.NewFieldErrors("config_file", fmt.Errorf("%s is a directory, not a file", configPath))
+	}
+	return nil
+}
+
+// gitExecutableExists validates that the git path is executable.
+func gitExecutableExists(path string) error {
+	if path == "" {
+		return nil
+	}
+	if _, err := exec.LookPath(path); err != nil {
+		return fmt.Errorf("executable not found: %s", path)
+	}
+	return nil
+}
+
+// isDirectoryOrNotExist validates that a path is a directory or doesn't exist.
+func isDirectoryOrNotExist(path string) error {
+	if path == "" {
+		return nil
+	}
+	info, err := os.Stat(path)
+	if os.IsNotExist(err) {
+		return nil // will be created
+	}
+	if err != nil {
+		return fmt.Errorf("cannot access: %w", err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("exists but is not a directory")
+	}
+	return nil
+}
+
+// validateSpawnCommands checks template syntax for spawn commands.
+func (c *Config) validateSpawnCommands() error {
+	var errs criterio.FieldErrorsBuilder
+	for i, cmd := range c.Commands.Spawn {
+		if err := validateTemplate(cmd, SpawnTemplateData{}); err != nil {
+			errs = errs.Append(fmt.Sprintf("commands.spawn[%d]", i), fmt.Errorf("template error: %w", err))
+		}
+	}
+	return errs.ToError()
+}
+
+// validateHooks checks hook patterns are valid regex.
+func (c *Config) validateHooks() error {
+	var errs criterio.FieldErrorsBuilder
+	for i, hook := range c.Hooks {
+		if _, err := regexp.Compile(hook.Pattern); err != nil {
+			errs = errs.Append(fmt.Sprintf("hooks[%d].pattern", i), fmt.Errorf("invalid regex %q: %w", hook.Pattern, err))
+		}
+	}
+	return errs.ToError()
 }
 
 // validateKeybindings checks keybinding configuration.
-func (c *Config) validateKeybindings(result *ValidationResult) {
+func (c *Config) validateKeybindings() error {
 	if len(c.Keybindings) == 0 {
-		result.Checks = append(result.Checks, ValidationCheck{
-			Category: "Keybindings",
-			Message:  "No keybindings defined (using defaults)",
-		})
-		return
+		return nil
 	}
 
 	keys := make([]string, 0, len(c.Keybindings))
@@ -266,74 +160,33 @@ func (c *Config) validateKeybindings(result *ValidationResult) {
 	}
 	sort.Strings(keys)
 
-	details := []string{}
+	var errs criterio.FieldErrorsBuilder
 	for _, key := range keys {
 		kb := c.Keybindings[key]
-		// Check action vs shell
+		field := fmt.Sprintf("keybindings[%q]", key)
+
 		if kb.Action == "" && kb.Sh == "" {
-			result.Errors = append(result.Errors, ValidationError{
-				Category: "Keybindings",
-				Item:     fmt.Sprintf("key %q", key),
-				Message:  "must have either action or sh",
-				Fix:      "Add either 'action: recycle' or 'action: delete' or a 'sh: <command>' field",
-			})
+			errs = errs.Append(field, fmt.Errorf("must have either action or sh"))
 			continue
 		}
 
 		if kb.Action != "" && kb.Sh != "" {
-			result.Errors = append(result.Errors, ValidationError{
-				Category: "Keybindings",
-				Item:     fmt.Sprintf("key %q", key),
-				Message:  "cannot have both action and sh",
-				Fix:      "Remove either the 'action' or 'sh' field",
-			})
+			errs = errs.Append(field, fmt.Errorf("cannot have both action and sh"))
 			continue
 		}
 
-		// Validate action type
-		if kb.Action != "" {
-			if !isValidAction(kb.Action) {
-				result.Errors = append(result.Errors, ValidationError{
-					Category: "Keybindings",
-					Item:     fmt.Sprintf("key %q", key),
-					Message:  fmt.Sprintf("invalid action %q", kb.Action),
-					Fix:      "Use 'recycle' or 'delete'",
-				})
-			} else {
-				help := kb.Help
-				if help == "" {
-					help = kb.Action
-				}
-				details = append(details, fmt.Sprintf("%s: %s (valid)", key, help))
-			}
+		if kb.Action != "" && !isValidAction(kb.Action) {
+			errs = errs.Append(field, fmt.Errorf("invalid action %q", kb.Action))
 		}
 
-		// Validate shell template
 		if kb.Sh != "" {
 			if err := validateTemplate(kb.Sh, KeybindingTemplateData{}); err != nil {
-				result.Errors = append(result.Errors, ValidationError{
-					Category: "Keybindings",
-					Item:     fmt.Sprintf("key %q", key),
-					Message:  fmt.Sprintf("template error in sh: %v", err),
-					Fix:      "Check template syntax. Available variables: {{.Path}}, {{.Remote}}, {{.ID}}, {{.Name}}",
-				})
-			} else {
-				help := kb.Help
-				if help == "" {
-					help = "shell command"
-				}
-				details = append(details, fmt.Sprintf("%s: %s (valid template)", key, help))
+				errs = errs.Append(field, fmt.Errorf("template error in sh: %w", err))
 			}
 		}
 	}
 
-	if len(details) > 0 {
-		result.Checks = append(result.Checks, ValidationCheck{
-			Category: "Keybindings",
-			Message:  fmt.Sprintf("%d keybinding(s) defined", len(c.Keybindings)),
-			Details:  details,
-		})
-	}
+	return errs.ToError()
 }
 
 // validateTemplate checks if a template string is valid.
@@ -344,6 +197,5 @@ func validateTemplate(tmplStr string, data any) error {
 	}
 
 	// Dry-run execute to catch missing key errors
-	// We pass empty/zero data so missing keys are caught
 	return t.Execute(io.Discard, data)
 }
