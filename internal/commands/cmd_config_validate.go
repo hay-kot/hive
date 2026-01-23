@@ -81,20 +81,8 @@ func (cmd *ConfigValidateCmd) outputJSON(c *cli.Command, validationErr error, wa
 		Warnings: warnings,
 	}
 
-	if validationErr != nil {
-		var fieldErrs criterio.FieldErrors
-		if errors.As(validationErr, &fieldErrs) {
-			for _, fe := range fieldErrs {
-				out.Errors = append(out.Errors, fieldError{
-					Field:   fe.Field,
-					Message: fe.Err.Error(),
-				})
-			}
-		} else {
-			out.Errors = append(out.Errors, fieldError{
-				Message: validationErr.Error(),
-			})
-		}
+	for _, fe := range extractFieldErrors(validationErr) {
+		out.Errors = append(out.Errors, fieldError{Field: fe.Field, Message: fe.Err.Error()})
 	}
 
 	enc := json.NewEncoder(c.Root().Writer)
@@ -102,35 +90,37 @@ func (cmd *ConfigValidateCmd) outputJSON(c *cli.Command, validationErr error, wa
 	return enc.Encode(out)
 }
 
-func (cmd *ConfigValidateCmd) outputText(p *printer.Printer, validationErr error, warnings []config.ValidationWarning) error {
-	// Print errors first (grouped)
-	errorCount := 0
-	if validationErr != nil {
-		p.Printf("Errors")
+// extractFieldErrors extracts field errors from a validation error.
+func extractFieldErrors(err error) criterio.FieldErrors {
+	if err == nil {
+		return nil
+	}
+	var fieldErrs criterio.FieldErrors
+	if errors.As(err, &fieldErrs) {
+		return fieldErrs
+	}
+	return criterio.FieldErrors{{Err: err}}
+}
 
-		var fieldErrs criterio.FieldErrors
-		if errors.As(validationErr, &fieldErrs) {
-			errorCount = len(fieldErrs)
-			for _, fe := range fieldErrs {
-				if fe.Field != "" {
-					p.Printf("  %s %s: %s", printer.Cross, fe.Field, fe.Err.Error())
-				} else {
-					p.Printf("  %s %s", printer.Cross, fe.Err.Error())
-				}
+func (cmd *ConfigValidateCmd) outputText(p *printer.Printer, validationErr error, warnings []config.ValidationWarning) error {
+	fieldErrs := extractFieldErrors(validationErr)
+
+	if len(fieldErrs) > 0 {
+		p.Printf("Errors")
+		for _, fe := range fieldErrs {
+			if fe.Field != "" {
+				p.Printf("  %s %s: %s", printer.Cross, fe.Field, fe.Err.Error())
+			} else {
+				p.Printf("  %s %s", printer.Cross, fe.Err.Error())
 			}
-		} else {
-			errorCount = 1
-			p.Printf("  %s %s", printer.Cross, validationErr.Error())
 		}
 	}
 
-	// Print warnings second (grouped)
 	if len(warnings) > 0 {
-		if errorCount > 0 {
+		if len(fieldErrs) > 0 {
 			p.Printf("")
 		}
 		p.Printf("Warnings")
-
 		for _, warn := range warnings {
 			msg := warn.Message
 			if warn.Item != "" {
@@ -140,7 +130,6 @@ func (cmd *ConfigValidateCmd) outputText(p *printer.Printer, validationErr error
 		}
 	}
 
-	// Print summary
 	p.Printf("")
 	if validationErr == nil {
 		if len(warnings) > 0 {
@@ -151,6 +140,6 @@ func (cmd *ConfigValidateCmd) outputText(p *printer.Printer, validationErr error
 		return nil
 	}
 
-	p.Errorf("%d error(s), %d warning(s)", errorCount, len(warnings))
+	p.Errorf("%d error(s), %d warning(s)", len(fieldErrs), len(warnings))
 	return cli.Exit("", 1)
 }

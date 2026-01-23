@@ -49,8 +49,8 @@ func (c *Config) ValidateDeep(configPath string) error {
 
 	return criterio.ValidateStruct(
 		c.validateFileAccess(configPath),
-		c.validateSpawnCommands(),
-		c.validateRecycleCommands(),
+		validateTemplates("commands.spawn", c.Commands.Spawn, SpawnTemplateData{}),
+		validateTemplates("commands.recycle", c.Commands.Recycle, RecycleTemplateData{}),
 		c.validateHooks(),
 		c.validateKeybindingTemplates(),
 	)
@@ -137,23 +137,12 @@ func isDirectoryOrNotExist(path string) error {
 	return nil
 }
 
-// validateSpawnCommands checks template syntax for spawn commands.
-func (c *Config) validateSpawnCommands() error {
+// validateTemplates checks template syntax for a slice of command templates.
+func validateTemplates(fieldPrefix string, commands []string, data any) error {
 	var errs criterio.FieldErrorsBuilder
-	for i, cmd := range c.Commands.Spawn {
-		if err := validateTemplate(cmd, SpawnTemplateData{}); err != nil {
-			errs = errs.Append(fmt.Sprintf("commands.spawn[%d]", i), fmt.Errorf("template error: %w", err))
-		}
-	}
-	return errs.ToError()
-}
-
-// validateRecycleCommands checks template syntax for recycle commands.
-func (c *Config) validateRecycleCommands() error {
-	var errs criterio.FieldErrorsBuilder
-	for i, cmd := range c.Commands.Recycle {
-		if err := validateTemplate(cmd, RecycleTemplateData{}); err != nil {
-			errs = errs.Append(fmt.Sprintf("commands.recycle[%d]", i), fmt.Errorf("template error: %w", err))
+	for i, cmd := range commands {
+		if err := validateTemplate(cmd, data); err != nil {
+			errs = errs.Append(fmt.Sprintf("%s[%d]", fieldPrefix, i), fmt.Errorf("template error: %w", err))
 		}
 	}
 	return errs.ToError()
