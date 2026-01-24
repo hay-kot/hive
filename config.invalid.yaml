@@ -1,0 +1,18 @@
+# Invalid config file for testing validation output
+# This file passes basic validation but fails deep validation
+
+commands:
+  spawn:
+    - "echo {{.Path}"          # Invalid template - unclosed braces
+    - "echo {{.InvalidField}}" # Invalid template - unknown field
+  recycle: []                  # Empty - triggers warning
+
+hooks:
+  - pattern: "[invalid-regex"  # Invalid regex - unclosed bracket
+    commands: []               # Empty commands - triggers warning
+  - pattern: "^https://github.com/.*"
+    commands: []               # Empty commands - triggers warning
+
+keybindings:
+  w:
+    sh: "open {{.BadField}}"   # Error: invalid template in sh

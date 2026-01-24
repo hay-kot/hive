@@ -56,3 +56,15 @@ tasks:
       - task: tidy
       - task: lint
       - task: test
+
+  validate:
+    desc: Runs config validate command
+    cmds:
+      - go run *.go config validate
+
+  validate:invalid:
+    desc: Runs config validate with an intentionally invalid config to test error output
+    env:
+      HIVE_CONFIG: "./config.invalid.yaml"
+    cmds:
+      - go run *.go config validate || true
