@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"math/rand"
 	"os"
 	"path/filepath"
 	"time"
@@ -13,6 +12,7 @@ import (
 	"github.com/hay-kot/hive/internal/core/git"
 	"github.com/hay-kot/hive/internal/core/session"
 	"github.com/hay-kot/hive/pkg/executil"
+	"github.com/hay-kot/hive/pkg/randid"
 	"github.com/rs/zerolog"
 )
 
@@ -289,12 +289,7 @@ func (s *Service) Git() git.Git {
 
 // generateID creates a 6-character random alphanumeric session ID.
 func generateID() string {
-	const chars = "abcdefghijklmnopqrstuvwxyz0123456789"
-	b := make([]byte, 6)
-	for i := range b {
-		b[i] = chars[rand.Intn(len(chars))]
-	}
-	return string(b)
+	return randid.Generate(6)
 }
 
 // findValidRecyclable finds a recyclable session and validates it.

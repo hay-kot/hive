@@ -3,6 +3,7 @@ package jsonfile
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
@@ -10,20 +11,22 @@ import (
 	"github.com/hay-kot/hive/internal/core/history"
 )
 
-// HistoryFile is the root JSON structure stored on disk.
-type HistoryFile struct {
+// historyFile is the root JSON structure stored on disk.
+type historyFile struct {
 	Entries []history.Entry `json:"entries"`
 }
 
 // HistoryStore implements history.Store using a JSON file for persistence.
 type HistoryStore struct {
-	path string
-	mu   sync.RWMutex
+	path       string
+	maxEntries int
+	mu         sync.RWMutex
 }
 
 // NewHistoryStore creates a new JSON file history store at the given path.
-func NewHistoryStore(path string) *HistoryStore {
-	return &HistoryStore{path: path}
+// maxEntries limits stored entries (0 means unlimited).
+func NewHistoryStore(path string, maxEntries int) *HistoryStore {
+	return &HistoryStore{path: path, maxEntries: maxEntries}
 }
 
 // List returns all history entries, newest first.
@@ -31,12 +34,12 @@ func (s *HistoryStore) List(ctx context.Context) ([]history.Entry, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	file, err := s.load()
+	f, err := s.load()
 	if err != nil {
 		return nil, err
 	}
 
-	return file.Entries, nil
+	return f.Entries, nil
 }
 
 // Get returns a history entry by ID. Returns ErrNotFound if not found.
@@ -44,12 +47,12 @@ func (s *HistoryStore) Get(ctx context.Context, id string) (history.Entry, error
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	file, err := s.load()
+	f, err := s.load()
 	if err != nil {
 		return history.Entry{}, err
 	}
 
-	for _, entry := range file.Entries {
+	for _, entry := range f.Entries {
 		if entry.ID == id {
 			return entry, nil
 		}
@@ -59,24 +62,22 @@ func (s *HistoryStore) Get(ctx context.Context, id string) (history.Entry, error
 }
 
 // Save adds a new history entry, pruning old entries to stay within maxEntries.
-func (s *HistoryStore) Save(ctx context.Context, entry history.Entry, maxEntries int) error {
+func (s *HistoryStore) Save(ctx context.Context, entry history.Entry) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	file, err := s.load()
+	f, err := s.load()
 	if err != nil {
 		return err
 	}
 
-	// Prepend new entry (newest first)
-	file.Entries = append([]history.Entry{entry}, file.Entries...)
+	f.Entries = append([]history.Entry{entry}, f.Entries...)
 
-	// Prune to max entries
-	if maxEntries > 0 && len(file.Entries) > maxEntries {
-		file.Entries = file.Entries[:maxEntries]
+	if s.maxEntries > 0 && len(f.Entries) > s.maxEntries {
+		f.Entries = f.Entries[:s.maxEntries]
 	}
 
-	return s.save(file)
+	return s.save(f)
 }
 
 // Clear removes all history entries.
@@ -84,7 +85,7 @@ func (s *HistoryStore) Clear(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	return s.save(HistoryFile{Entries: []history.Entry{}})
+	return s.save(historyFile{Entries: []history.Entry{}})
 }
 
 // LastFailed returns the most recent failed entry. Returns ErrNotFound if none.
@@ -92,12 +93,12 @@ func (s *HistoryStore) LastFailed(ctx context.Context) (history.Entry, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	file, err := s.load()
+	f, err := s.load()
 	if err != nil {
 		return history.Entry{}, err
 	}
 
-	for _, entry := range file.Entries {
+	for _, entry := range f.Entries {
 		if entry.Failed() {
 			return entry, nil
 		}
@@ -107,35 +108,35 @@ func (s *HistoryStore) LastFailed(ctx context.Context) (history.Entry, error) {
 }
 
 // load reads the history file from disk.
-// Returns empty HistoryFile if file doesn't exist.
-func (s *HistoryStore) load() (HistoryFile, error) {
+// Returns empty historyFile if file doesn't exist.
+func (s *HistoryStore) load() (historyFile, error) {
 	data, err := os.ReadFile(s.path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return HistoryFile{}, nil
+			return historyFile{}, nil
 		}
-		return HistoryFile{}, err
+		return historyFile{}, fmt.Errorf("read history file: %w", err)
 	}
 
 	if len(data) == 0 {
-		return HistoryFile{}, nil
+		return historyFile{}, nil
 	}
 
-	var file HistoryFile
-	if err := json.Unmarshal(data, &file); err != nil {
-		return HistoryFile{}, err
+	var f historyFile
+	if err := json.Unmarshal(data, &f); err != nil {
+		return historyFile{}, fmt.Errorf("history file corrupted (run 'hive run --clear-history' to reset): %w", err)
 	}
 
-	return file, nil
+	return f, nil
 }
 
 // save writes the history file to disk atomically.
-func (s *HistoryStore) save(file HistoryFile) error {
+func (s *HistoryStore) save(f historyFile) error {
 	if err := os.MkdirAll(filepath.Dir(s.path), 0o755); err != nil {
 		return err
 	}
 
-	data, err := json.MarshalIndent(file, "", "  ")
+	data, err := json.MarshalIndent(f, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -145,5 +146,10 @@ func (s *HistoryStore) save(file HistoryFile) error {
 		return err
 	}
 
-	return os.Rename(tmp, s.path)
+	if err := os.Rename(tmp, s.path); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+
+	return nil
 }

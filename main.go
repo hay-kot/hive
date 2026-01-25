@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"math/rand"
 	"os"
 	"path/filepath"
 	"time"
@@ -21,6 +20,7 @@ import (
 	"github.com/hay-kot/hive/internal/printer"
 	"github.com/hay-kot/hive/internal/store/jsonfile"
 	"github.com/hay-kot/hive/pkg/executil"
+	"github.com/hay-kot/hive/pkg/randid"
 	"github.com/hay-kot/hive/pkg/utils"
 )
 
@@ -119,7 +119,7 @@ Run 'hive new' to create a new session from the current repository.`,
 			// Create service
 			var (
 				store        = jsonfile.New(cfg.SessionsFile())
-				historyStore = jsonfile.NewHistoryStore(cfg.HistoryFile())
+				historyStore = jsonfile.NewHistoryStore(cfg.HistoryFile(), cfg.History.MaxEntries)
 				exec         = &executil.RealExecutor{}
 				gitExec      = git.NewExecutor(cfg.GitPath, exec)
 				logger       = log.With().Str("component", "hive").Logger()
@@ -161,7 +161,7 @@ Run 'hive new' to create a new session from the current repository.`,
 		exitCode = 1
 	}
 
-	// Record command to history (skip "run" command, TUI, and config commands)
+	// Record command to history (only "new" commands are recorded)
 	if shouldRecordCommand(cmdName) && flags.HistoryStore != nil && flags.Config != nil {
 		errMsg := ""
 		if runErr != nil {
@@ -169,7 +169,7 @@ Run 'hive new' to create a new session from the current repository.`,
 		}
 
 		entry := history.Entry{
-			ID:        generateHistoryID(),
+			ID:        randid.Generate(6),
 			Command:   cmdName,
 			Args:      cmdArgs,
 			ExitCode:  exitCode,
@@ -177,8 +177,9 @@ Run 'hive new' to create a new session from the current repository.`,
 			Timestamp: time.Now(),
 		}
 
-		if err := flags.HistoryStore.Save(ctx, entry, flags.Config.History.MaxEntries); err != nil {
+		if err := flags.HistoryStore.Save(ctx, entry); err != nil {
 			log.Warn().Err(err).Msg("failed to save command to history")
+			printer.Ctx(ctx).Infof("Note: Failed to save command to history: %v", err)
 		}
 	}
 
@@ -243,11 +244,14 @@ func extractCommandInfo(args []string) (string, []string) {
 	// Skip flags until we find a subcommand
 	for i := 1; i < len(args); i++ {
 		arg := args[i]
+		if len(arg) == 0 {
+			continue
+		}
 
 		// Skip flags
 		if arg[0] == '-' {
 			// Skip flag value if it's a flag that takes a value
-			if i+1 < len(args) && !isKnownBoolFlag(arg) && args[i+1][0] != '-' {
+			if i+1 < len(args) && !isKnownBoolFlag(arg) && len(args[i+1]) > 0 && args[i+1][0] != '-' {
 				i++
 			}
 			continue
@@ -264,9 +268,9 @@ func extractCommandInfo(args []string) (string, []string) {
 	return "", nil
 }
 
-// isKnownBoolFlag returns true if the flag is a known boolean flag.
+// isKnownBoolFlag returns true if the flag is a known root-level boolean flag.
+// Used by extractCommandInfo to correctly parse flag values vs subcommands.
 func isKnownBoolFlag(flag string) bool {
-	// These are the known boolean flags in hive
 	boolFlags := map[string]bool{
 		"-h": true, "--help": true,
 		"-v": true, "--version": true,
@@ -276,16 +280,5 @@ func isKnownBoolFlag(flag string) bool {
 
 // shouldRecordCommand returns true if the command should be recorded in history.
 func shouldRecordCommand(cmdName string) bool {
-	// Only record "new" commands
 	return cmdName == "new"
-}
-
-// generateHistoryID creates a 6-character random alphanumeric ID.
-func generateHistoryID() string {
-	const chars = "abcdefghijklmnopqrstuvwxyz0123456789"
-	b := make([]byte, 6)
-	for i := range b {
-		b[i] = chars[rand.Intn(len(chars))]
-	}
-	return string(b)
 }
