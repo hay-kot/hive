@@ -251,7 +251,7 @@ func extractCommandInfo(args []string) (string, []string) {
 		// Skip flags
 		if arg[0] == '-' {
 			// Skip flag value if it's a flag that takes a value
-			if i+1 < len(args) && !isKnownBoolFlag(arg) && len(args[i+1]) > 0 && args[i+1][0] != '-' {
+			if isKnownValueFlag(arg) && i+1 < len(args) {
 				i++
 			}
 			continue
@@ -268,14 +268,15 @@ func extractCommandInfo(args []string) (string, []string) {
 	return "", nil
 }
 
-// isKnownBoolFlag returns true if the flag is a known root-level boolean flag.
-// Used by extractCommandInfo to correctly parse flag values vs subcommands.
-func isKnownBoolFlag(flag string) bool {
-	boolFlags := map[string]bool{
-		"-h": true, "--help": true,
-		"-v": true, "--version": true,
+// isKnownValueFlag returns true if the flag is a known root-level flag that takes a value.
+// Used by extractCommandInfo to correctly skip flag values when finding subcommands.
+func isKnownValueFlag(flag string) bool {
+	switch flag {
+	case "--log-level", "--log-file", "--config", "-c", "--data-dir":
+		return true
+	default:
+		return false
 	}
-	return boolFlags[flag]
 }
 
 // shouldRecordCommand returns true if the command should be recorded in history.

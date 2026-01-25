@@ -133,22 +133,22 @@ func (s *HistoryStore) load() (historyFile, error) {
 // save writes the history file to disk atomically.
 func (s *HistoryStore) save(f historyFile) error {
 	if err := os.MkdirAll(filepath.Dir(s.path), 0o755); err != nil {
-		return err
+		return fmt.Errorf("create history directory: %w", err)
 	}
 
 	data, err := json.MarshalIndent(f, "", "  ")
 	if err != nil {
-		return err
+		return fmt.Errorf("marshal history: %w", err)
 	}
 
 	tmp := s.path + ".tmp"
 	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		return err
+		return fmt.Errorf("write history temp file: %w", err)
 	}
 
 	if err := os.Rename(tmp, s.path); err != nil {
-		os.Remove(tmp)
-		return err
+		_ = os.Remove(tmp)
+		return fmt.Errorf("rename history file: %w", err)
 	}
 
 	return nil
