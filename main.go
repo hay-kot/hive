@@ -161,28 +161,8 @@ Run 'hive new' to create a new session from the current repository.`,
 		exitCode = 1
 	}
 
-	// Record command to history (only "new" commands are recorded, excluding replay)
-	if shouldRecordCommand(cmdName, cmdArgs) && flags.HistoryStore != nil && flags.Config != nil && flags.LastNewOptions != nil {
-		errMsg := ""
-		if runErr != nil {
-			errMsg = runErr.Error()
-		}
-
-		entry := history.Entry{
-			ID:        randid.Generate(6),
-			Command:   cmdName,
-			Args:      cmdArgs,
-			Options:   flags.LastNewOptions,
-			ExitCode:  exitCode,
-			Error:     errMsg,
-			Timestamp: time.Now(),
-		}
-
-		if err := flags.HistoryStore.Save(ctx, entry); err != nil {
-			log.Warn().Err(err).Msg("failed to save command to history")
-			printer.Ctx(ctx).Infof("Note: Failed to save command to history: %v", err)
-		}
-	}
+	// Record command to history (only "new" commands, excluding replay)
+	recordCommandHistory(ctx, flags, cmdName, cmdArgs, exitCode, runErr)
 
 	// Flush deferred logs to console after TUI exits
 	if deferredLogs != nil {
@@ -294,4 +274,34 @@ func shouldRecordCommand(cmdName string, cmdArgs []string) bool {
 	}
 
 	return true
+}
+
+// recordCommandHistory saves the command to history if applicable.
+func recordCommandHistory(ctx context.Context, flags *commands.Flags, cmdName string, cmdArgs []string, exitCode int, runErr error) {
+	if !shouldRecordCommand(cmdName, cmdArgs) {
+		return
+	}
+	if flags.HistoryStore == nil || flags.LastNewOptions == nil {
+		return
+	}
+
+	errMsg := ""
+	if runErr != nil {
+		errMsg = runErr.Error()
+	}
+
+	entry := history.Entry{
+		ID:        randid.Generate(6),
+		Command:   cmdName,
+		Args:      cmdArgs,
+		Options:   flags.LastNewOptions,
+		ExitCode:  exitCode,
+		Error:     errMsg,
+		Timestamp: time.Now(),
+	}
+
+	if err := flags.HistoryStore.Save(ctx, entry); err != nil {
+		log.Warn().Err(err).Msg("failed to save command to history")
+		printer.Ctx(ctx).Infof("Note: Failed to save command to history: %v", err)
+	}
 }

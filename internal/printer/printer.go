@@ -138,6 +138,12 @@ func (p *Printer) Infof(format string, args ...any) {
 	_, _ = p.writer.Write([]byte(p.colorize(ColorGray, Dot+" "+msg) + "\n"))
 }
 
+// Warnf prints a warning message in yellow
+func (p *Printer) Warnf(format string, args ...any) {
+	msg := fmt.Sprintf(format, args...)
+	_, _ = p.writer.Write([]byte(p.colorize(ColorYellow, Dot+" "+msg) + "\n"))
+}
+
 // Printf prints a plain message without colors
 func (p *Printer) Printf(format string, args ...any) {
 	msg := fmt.Sprintf(format, args...)
@@ -180,4 +186,19 @@ func (p *Printer) printItem(color, symbol, label, detail string) {
 		line += ": " + detail
 	}
 	_, _ = p.writer.Write([]byte(line + "\n"))
+}
+
+// StatusOK returns a green checkmark with "ok" for use in tables.
+func StatusOK() string {
+	return ColorGreen + Check + ColorReset + " ok"
+}
+
+// StatusFailed returns a red cross with the given message for use in tables.
+func StatusFailed(msg string) string {
+	return ColorRed + Cross + ColorReset + " " + msg
+}
+
+// StatusWarn returns a yellow dot with the given message for use in tables.
+func StatusWarn(msg string) string {
+	return ColorYellow + Dot + ColorReset + " " + msg
 }

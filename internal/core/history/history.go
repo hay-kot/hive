@@ -1,7 +1,10 @@
 // Package history defines command history domain types and interfaces.
 package history
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // NewOptions contains the parsed options for a "new" command.
 type NewOptions struct {
@@ -24,4 +27,12 @@ type Entry struct {
 // Failed returns true if the command exited with a non-zero exit code.
 func (e *Entry) Failed() bool {
 	return e.ExitCode != 0
+}
+
+// CommandString returns the full command string (command + args).
+func (e *Entry) CommandString() string {
+	if len(e.Args) == 0 {
+		return e.Command
+	}
+	return e.Command + " " + strings.Join(e.Args, " ")
 }

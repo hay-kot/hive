@@ -122,52 +122,25 @@ func (cmd *NewCmd) run(ctx context.Context, c *cli.Command) error {
 }
 
 func (cmd *NewCmd) runReplay(ctx context.Context, c *cli.Command, p *printer.Printer) error {
-	var entry history.Entry
-	var err error
-
-	// Check if an ID was provided as a positional argument
-	replayID := c.Args().First()
-
-	if replayID == "" {
-		// Replay last command
-		entry, err = cmd.flags.HistoryStore.Last(ctx)
-		if errors.Is(err, history.ErrNotFound) {
-			p.Infof("No commands in history")
-			return nil
-		}
-		if err != nil {
-			return fmt.Errorf("get last command: %w", err)
-		}
-	} else {
-		// Replay specific command by ID
-		entry, err = cmd.flags.HistoryStore.Get(ctx, replayID)
-		if errors.Is(err, history.ErrNotFound) {
-			return fmt.Errorf("command %q not found in history", replayID)
-		}
-		if err != nil {
-			return fmt.Errorf("get command: %w", err)
-		}
+	entry, err := cmd.getReplayEntry(ctx, c.Args().First())
+	if errors.Is(err, history.ErrNotFound) {
+		p.Infof("No commands in history")
+		return nil
+	}
+	if err != nil {
+		return err
 	}
 
-	cmdStr := entry.Command
-	if len(entry.Args) > 0 {
-		cmdStr += " " + strings.Join(entry.Args, " ")
-	}
-	p.Infof("Replaying: hive %s", cmdStr)
+	p.Infof("Replaying: hive %s", entry.CommandString())
 
-	// Use stored options if available, otherwise parse from args (backward compat)
-	var opts hive.CreateOptions
-	if entry.Options != nil {
-		opts = hive.CreateOptions{
-			Name:   entry.Options.Name,
-			Remote: entry.Options.Remote,
-			Prompt: entry.Options.Prompt,
-		}
-	} else {
-		opts, err = cmd.parseArgsToOptions(entry.Args)
-		if err != nil {
-			return fmt.Errorf("parse replay args: %w", err)
-		}
+	if entry.Options == nil {
+		return fmt.Errorf("history entry %s is missing options data", entry.ID)
+	}
+
+	opts := hive.CreateOptions{
+		Name:   entry.Options.Name,
+		Remote: entry.Options.Remote,
+		Prompt: entry.Options.Prompt,
 	}
 
 	sess, err := cmd.flags.Service.CreateSession(ctx, opts)
@@ -179,52 +152,17 @@ func (cmd *NewCmd) runReplay(ctx context.Context, c *cli.Command, p *printer.Pri
 	return nil
 }
 
-// parseArgsToOptions parses CLI args back into CreateOptions.
-func (cmd *NewCmd) parseArgsToOptions(args []string) (hive.CreateOptions, error) {
-	var opts hive.CreateOptions
-
-	for i := 0; i < len(args); i++ {
-		arg := args[i]
-
-		// Handle --flag=value format
-		if strings.HasPrefix(arg, "--name=") {
-			opts.Name = strings.TrimPrefix(arg, "--name=")
-			continue
-		}
-		if strings.HasPrefix(arg, "--remote=") {
-			opts.Remote = strings.TrimPrefix(arg, "--remote=")
-			continue
-		}
-		if strings.HasPrefix(arg, "--prompt=") {
-			opts.Prompt = strings.TrimPrefix(arg, "--prompt=")
-			continue
-		}
-
-		// Handle --flag value format
-		switch arg {
-		case "-n", "--name":
-			if i+1 < len(args) {
-				opts.Name = args[i+1]
-				i++
-			}
-		case "-r", "--remote":
-			if i+1 < len(args) {
-				opts.Remote = args[i+1]
-				i++
-			}
-		case "-p", "--prompt":
-			if i+1 < len(args) {
-				opts.Prompt = args[i+1]
-				i++
-			}
-		}
+// getReplayEntry retrieves a history entry by ID, or the last entry if id is empty.
+func (cmd *NewCmd) getReplayEntry(ctx context.Context, id string) (history.Entry, error) {
+	if id == "" {
+		return cmd.flags.HistoryStore.Last(ctx)
 	}
 
-	if opts.Name == "" {
-		return opts, fmt.Errorf("no session name found in history entry")
+	entry, err := cmd.flags.HistoryStore.Get(ctx, id)
+	if errors.Is(err, history.ErrNotFound) {
+		return history.Entry{}, fmt.Errorf("command %q not found in history", id)
 	}
-
-	return opts, nil
+	return entry, err
 }
 
 func (cmd *NewCmd) runForm() error {

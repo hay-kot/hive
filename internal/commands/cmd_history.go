@@ -3,7 +3,6 @@ package commands
 import (
 	"context"
 	"fmt"
-	"strings"
 	"text/tabwriter"
 
 	"github.com/hay-kot/hive/internal/printer"
@@ -72,17 +71,12 @@ func (cmd *HistoryCmd) runList(ctx context.Context, c *cli.Command) error {
 	_, _ = fmt.Fprintln(w, "ID\tCOMMAND\tSTATUS\tTIME")
 
 	for _, e := range entries {
-		status := "ok"
+		status := printer.StatusOK()
 		if e.Failed() {
-			status = fmt.Sprintf("failed (%d)", e.ExitCode)
+			status = printer.StatusFailed(fmt.Sprintf("exit %d", e.ExitCode))
 		}
 
-		cmdStr := e.Command
-		if len(e.Args) > 0 {
-			cmdStr += " " + strings.Join(e.Args, " ")
-		}
-
-		// Truncate long commands
+		cmdStr := e.CommandString()
 		if len(cmdStr) > 50 {
 			cmdStr = cmdStr[:47] + "..."
 		}
