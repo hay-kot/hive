@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/charmbracelet/huh"
 	"github.com/hay-kot/hive/internal/core/history"
+	"github.com/hay-kot/hive/internal/core/validate"
 	"github.com/hay-kot/hive/internal/hive"
 	"github.com/hay-kot/hive/internal/printer"
 	"github.com/hay-kot/hive/internal/styles"
@@ -175,7 +175,7 @@ func (cmd *NewCmd) runForm() error {
 			huh.NewInput().
 				Title("Session name").
 				Description("Used in the directory path").
-				Validate(validateName).
+				Validate(validate.SessionName).
 				Value(&cmd.name),
 			huh.NewText().
 				Title("Prompt").
@@ -183,11 +183,4 @@ func (cmd *NewCmd) runForm() error {
 				Value(&cmd.prompt),
 		),
 	).WithTheme(styles.FormTheme()).Run()
-}
-
-func validateName(s string) error {
-	if strings.TrimSpace(s) == "" {
-		return fmt.Errorf("name is required")
-	}
-	return nil
 }
