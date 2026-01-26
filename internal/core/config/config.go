@@ -203,6 +203,11 @@ func (c *Config) HistoryFile() string {
 	return filepath.Join(c.DataDir, "history.json")
 }
 
+// LogsDir returns the path to the logs directory.
+func (c *Config) LogsDir() string {
+	return filepath.Join(c.DataDir, "logs")
+}
+
 func isValidAction(action string) bool {
 	switch action {
 	case ActionRecycle, ActionDelete:
