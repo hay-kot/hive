@@ -141,12 +141,16 @@ Output is JSON with a batch ID, log file path, and results for each session.`,
 func (cmd *BatchCmd) run(ctx context.Context, c *cli.Command) error {
 	batchID := randid.Generate(6)
 
-	// Setup logging to file
 	logger, logFile, err := cmd.setupLogger(batchID)
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "batch %s: failed to setup logger: %v\n", batchID, err)
 		return cmd.writeError(fmt.Errorf("setup logger: %w", err))
 	}
-	defer func() { _ = logFile.Close() }()
+	defer func() {
+		if err := logFile.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: failed to close log file: %v\n", err)
+		}
+	}()
 
 	logger.Info().Str("batch_id", batchID).Msg("starting batch processing")
 
@@ -169,10 +173,8 @@ func (cmd *BatchCmd) run(ctx context.Context, c *cli.Command) error {
 
 	failures := 0
 	for i, sess := range input.Sessions {
-		// Check failure threshold
 		if failures >= maxFailures {
 			logger.Warn().Str("name", sess.Name).Msg("skipping session due to failure threshold")
-			// Mark remaining sessions as skipped
 			for j := i; j < len(input.Sessions); j++ {
 				output.Results = append(output.Results, BatchResult{
 					Name:   input.Sessions[j].Name,
@@ -232,7 +234,6 @@ func (cmd *BatchCmd) readInput() (BatchInput, error) {
 		defer func() { _ = f.Close() }()
 		reader = f
 	} else {
-		// Check if stdin is a TTY (no piped input)
 		if term.IsTerminal(int(os.Stdin.Fd())) {
 			return BatchInput{}, fmt.Errorf("no input provided (stdin is a terminal); use -f flag or pipe JSON input")
 		}
@@ -274,15 +275,27 @@ func (cmd *BatchCmd) createSession(ctx context.Context, sess BatchSession) Batch
 func (cmd *BatchCmd) writeOutput(output BatchOutput) error {
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
-	return enc.Encode(output)
+	if err := enc.Encode(output); err != nil {
+		fmt.Fprintf(os.Stderr, "error: failed to write JSON output: %v\n", err)
+		fmt.Fprintf(os.Stderr, "batch_id: %s\n", output.BatchID)
+		fmt.Fprintf(os.Stderr, "log_file: %s\n", output.LogFile)
+		fmt.Fprintf(os.Stderr, "results: %d created, %d failed, %d skipped\n",
+			countByStatus(output.Results, StatusCreated),
+			countByStatus(output.Results, StatusFailed),
+			countByStatus(output.Results, StatusSkipped))
+		return err
+	}
+	return nil
 }
 
 func (cmd *BatchCmd) writeError(err error) error {
 	output := BatchErrorOutput{Error: err.Error()}
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
-	_ = enc.Encode(output)
-	return err // still return error for exit code
+	if encErr := enc.Encode(output); encErr != nil {
+		fmt.Fprintf(os.Stderr, "error: %s (failed to write JSON: %v)\n", err, encErr)
+	}
+	return err
 }
 
 func countByStatus(results []BatchResult, status string) int {
