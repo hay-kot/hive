@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 
 	"github.com/charmbracelet/huh"
 	"github.com/hay-kot/hive/internal/core/history"
@@ -21,6 +22,7 @@ type NewCmd struct {
 	name   string
 	remote string
 	prompt string
+	source string
 	replay bool
 }
 
@@ -67,6 +69,12 @@ Use --replay to re-run a previous command:
 				Usage:       "AI prompt passed to the spawn command template",
 				Destination: &cmd.prompt,
 			},
+			&cli.StringFlag{
+				Name:        "source",
+				Aliases:     []string{"s"},
+				Usage:       "source directory for file copying (defaults to current directory)",
+				Destination: &cmd.source,
+			},
 			&cli.BoolFlag{
 				Name:        "replay",
 				Aliases:     []string{"R"},
@@ -98,10 +106,16 @@ func (cmd *NewCmd) run(ctx context.Context, c *cli.Command) error {
 		}
 	}
 
+	source := cmd.source
+	if source == "" {
+		source, _ = os.Getwd()
+	}
+
 	opts := hive.CreateOptions{
 		Name:   cmd.name,
 		Remote: cmd.remote,
 		Prompt: cmd.prompt,
+		Source: source,
 	}
 
 	// Save parsed options for history recording
@@ -109,6 +123,7 @@ func (cmd *NewCmd) run(ctx context.Context, c *cli.Command) error {
 		Name:   cmd.name,
 		Remote: cmd.remote,
 		Prompt: cmd.prompt,
+		Source: source,
 	}
 
 	sess, err := cmd.flags.Service.CreateSession(ctx, opts)
@@ -141,6 +156,7 @@ func (cmd *NewCmd) runReplay(ctx context.Context, c *cli.Command, p *printer.Pri
 		Name:   entry.Options.Name,
 		Remote: entry.Options.Remote,
 		Prompt: entry.Options.Prompt,
+		Source: entry.Options.Source,
 	}
 
 	sess, err := cmd.flags.Service.CreateSession(ctx, opts)

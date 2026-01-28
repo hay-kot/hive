@@ -11,6 +11,7 @@ type NewOptions struct {
 	Name   string `json:"name"`
 	Remote string `json:"remote,omitempty"`
 	Prompt string `json:"prompt,omitempty"`
+	Source string `json:"source,omitempty"`
 }
 
 // Entry represents a recorded command execution.

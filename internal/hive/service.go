@@ -21,6 +21,7 @@ type CreateOptions struct {
 	Name   string // Session name (used in path)
 	Remote string // Git remote URL to clone (auto-detected if empty)
 	Prompt string // AI prompt to pass to spawn command
+	Source string // Source directory for file copying
 }
 
 // Service orchestrates hive operations.
@@ -33,6 +34,7 @@ type Service struct {
 	spawner    *Spawner
 	recycler   *Recycler
 	hookRunner *HookRunner
+	fileCopier *FileCopier
 }
 
 // New creates a new Service.
@@ -53,6 +55,7 @@ func New(
 		spawner:    NewSpawner(log.With().Str("component", "spawner").Logger(), exec, stdout, stderr),
 		recycler:   NewRecycler(log.With().Str("component", "recycler").Logger(), exec),
 		hookRunner: NewHookRunner(log.With().Str("component", "hooks").Logger(), exec, stdout, stderr),
+		fileCopier: NewFileCopier(log.With().Str("component", "copier").Logger(), stdout),
 	}
 }
 
@@ -131,6 +134,13 @@ func (s *Service) CreateSession(ctx context.Context, opts CreateOptions) (*sessi
 			State:     session.StateActive,
 			CreatedAt: now,
 			UpdatedAt: now,
+		}
+	}
+
+	// Copy files (before hooks so hooks can operate on copied files)
+	if len(s.config.Copy) > 0 && opts.Source != "" {
+		if err := s.fileCopier.CopyFiles(ctx, s.config.Copy, remote, opts.Source, sess.Path); err != nil {
+			return nil, fmt.Errorf("copy files: %w", err)
 		}
 	}
 
