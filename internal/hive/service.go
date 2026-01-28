@@ -146,11 +146,15 @@ func (s *Service) CreateSession(ctx context.Context, opts CreateOptions) (*sessi
 
 	// Spawn terminal
 	if len(s.config.Commands.Spawn) > 0 {
+		owner, repoName := git.ExtractOwnerRepo(remote)
 		data := SpawnData{
-			Path:   sess.Path,
-			Name:   sess.Name,
-			Slug:   sess.Slug,
-			Prompt: opts.Prompt,
+			Path:       sess.Path,
+			Name:       sess.Name,
+			Slug:       sess.Slug,
+			Prompt:     opts.Prompt,
+			ContextDir: s.config.RepoContextDir(owner, repoName),
+			Owner:      owner,
+			Repo:       repoName,
 		}
 		if err := s.spawner.Spawn(ctx, s.config.Commands.Spawn, data); err != nil {
 			return nil, fmt.Errorf("spawn terminal: %w", err)

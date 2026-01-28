@@ -12,9 +12,13 @@ import (
 
 // SpawnTemplateData defines available fields for spawn command templates.
 type SpawnTemplateData struct {
-	Path   string // Absolute path to the session directory
-	Name   string // Session name (directory basename)
-	Prompt string // User-provided prompt from spawn command
+	Path       string // Absolute path to the session directory
+	Name       string // Session name (directory basename)
+	Prompt     string // User-provided prompt from spawn command
+	Slug       string // Session slug (URL-safe version of name)
+	ContextDir string // Path to context directory
+	Owner      string // Repository owner
+	Repo       string // Repository name
 }
 
 // RecycleTemplateData defines available fields for recycle command templates.

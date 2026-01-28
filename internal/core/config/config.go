@@ -40,12 +40,18 @@ type Config struct {
 	Hooks               []Hook                `yaml:"hooks"`
 	AutoDeleteCorrupted bool                  `yaml:"auto_delete_corrupted"`
 	History             HistoryConfig         `yaml:"history"`
+	Context             ContextConfig         `yaml:"context"`
 	DataDir             string                `yaml:"-"` // set by caller, not from config file
 }
 
 // HistoryConfig holds command history configuration.
 type HistoryConfig struct {
 	MaxEntries int `yaml:"max_entries"`
+}
+
+// ContextConfig configures context directory behavior.
+type ContextConfig struct {
+	SymlinkName string `yaml:"symlink_name"` // default: ".hive"
 }
 
 // GitConfig holds git-related configuration.
@@ -95,6 +101,9 @@ func DefaultConfig() Config {
 		History: HistoryConfig{
 			MaxEntries: 100,
 		},
+		Context: ContextConfig{
+			SymlinkName: ".hive",
+		},
 	}
 }
 
@@ -141,6 +150,9 @@ func (c *Config) applyDefaults() {
 	}
 	if c.History.MaxEntries == 0 {
 		c.History.MaxEntries = defaults.History.MaxEntries
+	}
+	if c.Context.SymlinkName == "" {
+		c.Context.SymlinkName = defaults.Context.SymlinkName
 	}
 }
 
@@ -206,6 +218,21 @@ func (c *Config) HistoryFile() string {
 // LogsDir returns the path to the logs directory.
 func (c *Config) LogsDir() string {
 	return filepath.Join(c.DataDir, "logs")
+}
+
+// ContextDir returns the base context directory path.
+func (c *Config) ContextDir() string {
+	return filepath.Join(c.DataDir, "context")
+}
+
+// RepoContextDir returns the context directory for a specific owner/repo.
+func (c *Config) RepoContextDir(owner, repo string) string {
+	return filepath.Join(c.ContextDir(), owner, repo)
+}
+
+// SharedContextDir returns the shared context directory.
+func (c *Config) SharedContextDir() string {
+	return filepath.Join(c.ContextDir(), "shared")
 }
 
 func isValidAction(action string) bool {

@@ -49,3 +49,26 @@ func ExtractRepoName(remote string) string {
 
 	return remote
 }
+
+// ExtractOwnerRepo extracts owner and repo from a git remote URL.
+// Handles SSH (git@github.com:owner/repo.git) and HTTPS (https://github.com/owner/repo.git).
+// Returns empty strings if parsing fails.
+func ExtractOwnerRepo(remote string) (owner, repo string) {
+	remote = strings.TrimSuffix(remote, ".git")
+
+	// SSH format: git@github.com:owner/repo
+	if idx := strings.Index(remote, ":"); idx != -1 && !strings.HasPrefix(remote, "http") {
+		parts := strings.Split(remote[idx+1:], "/")
+		if len(parts) >= 2 {
+			return parts[len(parts)-2], parts[len(parts)-1]
+		}
+	}
+
+	// HTTPS format: https://github.com/owner/repo
+	parts := strings.Split(remote, "/")
+	if len(parts) >= 2 {
+		return parts[len(parts)-2], parts[len(parts)-1]
+	}
+
+	return "", ""
+}
