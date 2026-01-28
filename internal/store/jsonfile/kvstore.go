@@ -59,7 +59,7 @@ func (s *KVStore) withFileLock(lockType int, fn func() error) error {
 	if err != nil {
 		return fmt.Errorf("open lock file: %w", err)
 	}
-	defer f.Close()
+	defer f.Close() //nolint:errcheck
 
 	if err := syscall.Flock(int(f.Fd()), lockType); err != nil {
 		return fmt.Errorf("acquire file lock: %w", err)
@@ -260,7 +260,7 @@ func (s *KVStore) save(file KVFile) error {
 	}
 
 	if err := os.Rename(tmp, s.path); err != nil {
-		os.Remove(tmp) // best effort cleanup
+		_ = os.Remove(tmp) // best effort cleanup
 		return fmt.Errorf("rename temp file: %w", err)
 	}
 
