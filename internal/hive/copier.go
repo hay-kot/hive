@@ -31,6 +31,15 @@ func NewFileCopier(log zerolog.Logger, stdout io.Writer) *FileCopier {
 
 // CopyFiles copies files matching the rules from sourceDir to destDir.
 func (c *FileCopier) CopyFiles(ctx context.Context, rules []config.CopyRule, remote, sourceDir, destDir string) error {
+	// Validate source directory exists
+	info, err := os.Stat(sourceDir)
+	if err != nil {
+		return fmt.Errorf("source directory: %w", err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("source path is not a directory: %s", sourceDir)
+	}
+
 	c.log.Debug().
 		Str("remote", remote).
 		Str("source", sourceDir).
@@ -146,6 +155,7 @@ func (c *FileCopier) copyPattern(ctx context.Context, ruleNum int, sourceDir, de
 			Str("pattern", pattern).
 			Str("source", sourceDir).
 			Msg("glob pattern matched no files")
+		_, _ = fmt.Fprintf(c.stdout, "warning: pattern %q matched no files in %s\n", pattern, sourceDir)
 		return nil
 	}
 

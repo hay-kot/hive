@@ -252,11 +252,24 @@ func (cmd *BatchCmd) readInput() (BatchInput, error) {
 }
 
 func (cmd *BatchCmd) createSession(ctx context.Context, sess BatchSession) BatchResult {
+	source := sess.Source
+	if source == "" {
+		var err error
+		source, err = os.Getwd()
+		if err != nil {
+			return BatchResult{
+				Name:   sess.Name,
+				Status: StatusFailed,
+				Error:  fmt.Errorf("determine source directory: %w", err).Error(),
+			}
+		}
+	}
+
 	opts := hive.CreateOptions{
 		Name:   sess.Name,
 		Remote: sess.Remote,
 		Prompt: sess.Prompt,
-		Source: sess.Source,
+		Source: source,
 	}
 
 	created, err := cmd.flags.Service.CreateSession(ctx, opts)
