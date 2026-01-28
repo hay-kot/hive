@@ -38,6 +38,7 @@ type Config struct {
 	GitPath             string                `yaml:"git_path"`
 	Keybindings         map[string]Keybinding `yaml:"keybindings"`
 	Hooks               []Hook                `yaml:"hooks"`
+	Copy                []CopyRule            `yaml:"copy"`
 	AutoDeleteCorrupted bool                  `yaml:"auto_delete_corrupted"`
 	History             HistoryConfig         `yaml:"history"`
 	DataDir             string                `yaml:"-"` // set by caller, not from config file
@@ -59,6 +60,14 @@ type Hook struct {
 	Pattern string `yaml:"pattern"`
 	// Commands to run in the session directory after clone/recycle.
 	Commands []string `yaml:"commands"`
+}
+
+// CopyRule defines files to copy for matching repositories.
+type CopyRule struct {
+	// Pattern matches against remote URL (regex). Empty = matches all.
+	Pattern string `yaml:"pattern"`
+	// Files are glob patterns to copy from source directory.
+	Files []string `yaml:"files"`
 }
 
 // Commands defines the shell commands used by hive.

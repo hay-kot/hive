@@ -51,6 +51,7 @@ func (c *Config) ValidateDeep(configPath string) error {
 		validateTemplates("commands.spawn", c.Commands.Spawn, SpawnTemplateData{}),
 		validateTemplates("commands.recycle", c.Commands.Recycle, RecycleTemplateData{}),
 		c.validateHooks(),
+		c.validateCopyRules(),
 		c.validateKeybindingTemplates(),
 	)
 }
@@ -73,6 +74,16 @@ func (c *Config) Warnings() []ValidationWarning {
 				Category: "Hooks",
 				Item:     fmt.Sprintf("hook %d", i),
 				Message:  "hook has no commands defined",
+			})
+		}
+	}
+
+	for i, rule := range c.Copy {
+		if len(rule.Files) == 0 {
+			warnings = append(warnings, ValidationWarning{
+				Category: "Copy Rules",
+				Item:     fmt.Sprintf("rule %d", i),
+				Message:  "copy rule has no files defined",
 			})
 		}
 	}
@@ -153,6 +164,20 @@ func (c *Config) validateHooks() error {
 	for i, hook := range c.Hooks {
 		if _, err := regexp.Compile(hook.Pattern); err != nil {
 			errs = errs.Append(fmt.Sprintf("hooks[%d].pattern", i), fmt.Errorf("invalid regex %q: %w", hook.Pattern, err))
+		}
+	}
+	return errs.ToError()
+}
+
+// validateCopyRules checks copy rule patterns are valid regex.
+func (c *Config) validateCopyRules() error {
+	var errs criterio.FieldErrorsBuilder
+	for i, rule := range c.Copy {
+		if rule.Pattern == "" {
+			continue // empty pattern matches all, valid
+		}
+		if _, err := regexp.Compile(rule.Pattern); err != nil {
+			errs = errs.Append(fmt.Sprintf("copy[%d].pattern", i), fmt.Errorf("invalid regex %q: %w", rule.Pattern, err))
 		}
 	}
 	return errs.ToError()

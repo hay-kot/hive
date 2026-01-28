@@ -263,3 +263,49 @@ func TestWarnings_EmptyRecycleCommands(t *testing.T) {
 	}
 	assert.True(t, hasWarning, "expected warning about empty recycle commands")
 }
+
+func TestValidateDeep_ValidCopyRules(t *testing.T) {
+	cfg := validConfig(t)
+	cfg.Copy = []CopyRule{
+		{Pattern: "", Files: []string{".envrc"}},
+		{Pattern: "^https://github.com/.*", Files: []string{"*.yaml"}},
+	}
+
+	err := cfg.ValidateDeep("")
+	assert.NoError(t, err)
+}
+
+func TestValidateDeep_InvalidCopyRulePattern(t *testing.T) {
+	cfg := validConfig(t)
+	cfg.Copy = []CopyRule{
+		{Pattern: "[invalid", Files: []string{".envrc"}},
+	}
+
+	err := cfg.ValidateDeep("")
+
+	var fieldErrs criterio.FieldErrors
+	require.ErrorAs(t, err, &fieldErrs)
+	assert.Len(t, fieldErrs, 1)
+	assert.Contains(t, fieldErrs[0].Field, "copy")
+	assert.Contains(t, fieldErrs[0].Err.Error(), "invalid regex")
+}
+
+func TestWarnings_EmptyCopyRuleFiles(t *testing.T) {
+	cfg := validConfig(t)
+	cfg.Copy = []CopyRule{
+		{Pattern: ".*", Files: []string{}},
+	}
+
+	err := cfg.ValidateDeep("")
+	require.NoError(t, err)
+
+	warnings := cfg.Warnings()
+	hasWarning := false
+	for _, w := range warnings {
+		if w.Category == "Copy Rules" && strings.Contains(w.Message, "no files") {
+			hasWarning = true
+			break
+		}
+	}
+	assert.True(t, hasWarning, "expected warning about empty copy rule files")
+}

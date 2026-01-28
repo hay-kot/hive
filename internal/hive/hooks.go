@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"regexp"
 	"strings"
 
 	"github.com/hay-kot/hive/internal/core/config"
@@ -40,7 +39,13 @@ func (h *HookRunner) RunHooks(ctx context.Context, hooks []config.Hook, remote, 
 
 	hookNum := 0
 	for _, hook := range hooks {
-		matched, err := matchPattern(hook.Pattern, remote)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		matched, err := matchRemotePattern(hook.Pattern, remote)
 		if err != nil {
 			return fmt.Errorf("match pattern %q: %w", hook.Pattern, err)
 		}
@@ -87,9 +92,4 @@ func (h *HookRunner) printCommandHeader(hookNum, cmdNum, totalCmds int, cmd stri
 	_, _ = fmt.Fprintln(h.stdout, divider)
 	_, _ = fmt.Fprintf(h.stdout, "%s %s %s\n", header, cmdLabel, command)
 	_, _ = fmt.Fprintln(h.stdout, divider)
-}
-
-// matchPattern checks if remote matches the regex pattern.
-func matchPattern(pattern, remote string) (bool, error) {
-	return regexp.MatchString(pattern, remote)
 }
