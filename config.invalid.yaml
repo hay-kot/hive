@@ -7,11 +7,11 @@ commands:
     - "echo {{.InvalidField}}" # Invalid template - unknown field
   recycle: []                  # Empty - triggers warning
 
-hooks:
+rules:
   - pattern: "[invalid-regex"  # Invalid regex - unclosed bracket
-    commands: []               # Empty commands - triggers warning
+    # No commands or copy - triggers warning
   - pattern: "^https://github.com/.*"
-    commands: []               # Empty commands - triggers warning
+    # No commands or copy - triggers warning
 
 keybindings:
   w:

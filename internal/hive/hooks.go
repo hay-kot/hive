@@ -30,61 +30,36 @@ func NewHookRunner(log zerolog.Logger, executor executil.Executor, stdout, stder
 	}
 }
 
-// RunHooks executes hooks matching the remote URL.
-func (h *HookRunner) RunHooks(ctx context.Context, hooks []config.Hook, remote, path string) error {
+// RunHooks executes the commands from a matched rule.
+func (h *HookRunner) RunHooks(ctx context.Context, rule config.Rule, path string) error {
 	h.log.Debug().
-		Str("remote", remote).
-		Int("hook_count", len(hooks)).
-		Msg("evaluating hooks")
+		Str("pattern", rule.Pattern).
+		Strs("commands", rule.Commands).
+		Msg("running rule commands")
 
-	hookNum := 0
-	for _, hook := range hooks {
+	for i, cmd := range rule.Commands {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
 		}
 
-		matched, err := matchRemotePattern(hook.Pattern, remote)
-		if err != nil {
-			return fmt.Errorf("match pattern %q: %w", hook.Pattern, err)
+		h.printCommandHeader(i+1, len(rule.Commands), cmd)
+
+		if err := h.executor.RunDirStream(ctx, path, h.stdout, h.stderr, "sh", "-c", cmd); err != nil {
+			return fmt.Errorf("run command %q: %w", cmd, err)
 		}
 
-		h.log.Debug().
-			Str("pattern", hook.Pattern).
-			Str("remote", remote).
-			Bool("matched", matched).
-			Msg("hook pattern evaluated")
-
-		if !matched {
-			continue
-		}
-
-		hookNum++
-
-		h.log.Debug().
-			Str("pattern", hook.Pattern).
-			Strs("commands", hook.Commands).
-			Msg("running hook")
-
-		for i, cmd := range hook.Commands {
-			h.printCommandHeader(hookNum, i+1, len(hook.Commands), cmd)
-
-			if err := h.executor.RunDirStream(ctx, path, h.stdout, h.stderr, "sh", "-c", cmd); err != nil {
-				return fmt.Errorf("run hook %q command %q: %w", hook.Pattern, cmd, err)
-			}
-
-			_, _ = fmt.Fprintln(h.stdout)
-		}
+		_, _ = fmt.Fprintln(h.stdout)
 	}
 
 	return nil
 }
 
 // printCommandHeader prints a styled header for a hook command.
-func (h *HookRunner) printCommandHeader(hookNum, cmdNum, totalCmds int, cmd string) {
+func (h *HookRunner) printCommandHeader(cmdNum, totalCmds int, cmd string) {
 	divider := styles.DividerStyle.Render(strings.Repeat("─", 50))
-	header := styles.CommandHeaderStyle.Render(fmt.Sprintf("hook %d", hookNum))
+	header := styles.CommandHeaderStyle.Render("hook")
 	cmdLabel := styles.DividerStyle.Render(fmt.Sprintf("[%d/%d]", cmdNum, totalCmds))
 	command := styles.CommandStyle.Render(cmd)
 

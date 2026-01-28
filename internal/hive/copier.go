@@ -29,8 +29,8 @@ func NewFileCopier(log zerolog.Logger, stdout io.Writer) *FileCopier {
 	}
 }
 
-// CopyFiles copies files matching the rules from sourceDir to destDir.
-func (c *FileCopier) CopyFiles(ctx context.Context, rules []config.CopyRule, remote, sourceDir, destDir string) error {
+// CopyFiles copies files matching the rule's copy patterns from sourceDir to destDir.
+func (c *FileCopier) CopyFiles(ctx context.Context, rule config.Rule, sourceDir, destDir string) error {
 	// Validate source directory exists
 	info, err := os.Stat(sourceDir)
 	if err != nil {
@@ -41,46 +41,21 @@ func (c *FileCopier) CopyFiles(ctx context.Context, rules []config.CopyRule, rem
 	}
 
 	c.log.Debug().
-		Str("remote", remote).
+		Str("pattern", rule.Pattern).
 		Str("source", sourceDir).
 		Str("dest", destDir).
-		Int("rule_count", len(rules)).
-		Msg("evaluating copy rules")
+		Strs("copy", rule.Copy).
+		Msg("processing copy patterns")
 
-	ruleNum := 0
-	for _, rule := range rules {
+	for _, filePattern := range rule.Copy {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
 		}
 
-		matched, err := matchRemotePattern(rule.Pattern, remote)
-		if err != nil {
-			return fmt.Errorf("match pattern %q: %w", rule.Pattern, err)
-		}
-
-		c.log.Debug().
-			Str("pattern", rule.Pattern).
-			Str("remote", remote).
-			Bool("matched", matched).
-			Msg("copy rule pattern evaluated")
-
-		if !matched {
-			continue
-		}
-
-		ruleNum++
-
-		c.log.Debug().
-			Str("pattern", rule.Pattern).
-			Strs("files", rule.Files).
-			Msg("processing copy rule")
-
-		for _, filePattern := range rule.Files {
-			if err := c.copyPattern(ctx, ruleNum, sourceDir, destDir, filePattern); err != nil {
-				return err
-			}
+		if err := c.copyPattern(ctx, sourceDir, destDir, filePattern); err != nil {
+			return err
 		}
 	}
 
@@ -144,7 +119,7 @@ func isPathTraversal(relPath string) bool {
 }
 
 // copyPattern copies files matching a glob pattern from source to dest.
-func (c *FileCopier) copyPattern(ctx context.Context, ruleNum int, sourceDir, destDir, pattern string) error {
+func (c *FileCopier) copyPattern(ctx context.Context, sourceDir, destDir, pattern string) error {
 	matches, err := c.globFiles(sourceDir, pattern)
 	if err != nil {
 		return fmt.Errorf("glob %q: %w", pattern, err)
@@ -159,7 +134,7 @@ func (c *FileCopier) copyPattern(ctx context.Context, ruleNum int, sourceDir, de
 		return nil
 	}
 
-	c.printCopyHeader(ruleNum, pattern, len(matches))
+	c.printCopyHeader(pattern, len(matches))
 
 	for _, match := range matches {
 		select {
@@ -286,9 +261,9 @@ func (c *FileCopier) copyRegularFile(src, dst string, srcInfo fs.FileInfo) error
 }
 
 // printCopyHeader prints a styled header for a copy operation.
-func (c *FileCopier) printCopyHeader(ruleNum int, pattern string, count int) {
+func (c *FileCopier) printCopyHeader(pattern string, count int) {
 	divider := styles.DividerStyle.Render(strings.Repeat("─", 50))
-	header := styles.CommandHeaderStyle.Render(fmt.Sprintf("copy %d", ruleNum))
+	header := styles.CommandHeaderStyle.Render("copy")
 	patternLabel := styles.CommandStyle.Render(pattern)
 	countLabel := styles.DividerStyle.Render(fmt.Sprintf("[%d files]", count))
 

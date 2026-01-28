@@ -37,8 +37,7 @@ type Config struct {
 	Git                 GitConfig             `yaml:"git"`
 	GitPath             string                `yaml:"git_path"`
 	Keybindings         map[string]Keybinding `yaml:"keybindings"`
-	Hooks               []Hook                `yaml:"hooks"`
-	Copy                []CopyRule            `yaml:"copy"`
+	Rules               []Rule                `yaml:"rules"`
 	AutoDeleteCorrupted bool                  `yaml:"auto_delete_corrupted"`
 	History             HistoryConfig         `yaml:"history"`
 	Context             ContextConfig         `yaml:"context"`
@@ -60,20 +59,14 @@ type GitConfig struct {
 	StatusWorkers int `yaml:"status_workers"`
 }
 
-// Hook defines setup commands for specific repositories.
-type Hook struct {
-	// Pattern matches against remote URL (regex pattern).
-	Pattern string `yaml:"pattern"`
-	// Commands to run in the session directory after clone/recycle.
-	Commands []string `yaml:"commands"`
-}
-
-// CopyRule defines files to copy for matching repositories.
-type CopyRule struct {
+// Rule defines actions to take for matching repositories.
+type Rule struct {
 	// Pattern matches against remote URL (regex). Empty = matches all.
 	Pattern string `yaml:"pattern"`
-	// Files are glob patterns to copy from source directory.
-	Files []string `yaml:"files"`
+	// Commands to run in the session directory after clone/recycle.
+	Commands []string `yaml:"commands,omitempty"`
+	// Copy are glob patterns to copy from source directory.
+	Copy []string `yaml:"copy,omitempty"`
 }
 
 // Commands defines the shell commands used by hive.

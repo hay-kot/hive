@@ -137,16 +137,9 @@ func (s *Service) CreateSession(ctx context.Context, opts CreateOptions) (*sessi
 		}
 	}
 
-	// Copy files (before hooks so hooks can operate on copied files)
-	if len(s.config.Copy) > 0 && opts.Source != "" {
-		if err := s.fileCopier.CopyFiles(ctx, s.config.Copy, remote, opts.Source, sess.Path); err != nil {
-			return nil, fmt.Errorf("copy files: %w", err)
-		}
-	}
-
-	// Run hooks
-	if err := s.hookRunner.RunHooks(ctx, s.config.Hooks, remote, sess.Path); err != nil {
-		return nil, fmt.Errorf("run hooks: %w", err)
+	// Execute matching rules
+	if err := s.executeRules(ctx, remote, opts.Source, sess.Path); err != nil {
+		return nil, fmt.Errorf("execute rules: %w", err)
 	}
 
 	// Save session
@@ -354,4 +347,38 @@ func (s *Service) markCorrupted(ctx context.Context, sess *session.Session) {
 			s.log.Error().Err(err).Str("session_id", sess.ID).Msg("failed to save corrupted session")
 		}
 	}
+}
+
+// executeRules executes all rules matching the remote URL.
+func (s *Service) executeRules(ctx context.Context, remote, source, dest string) error {
+	for _, rule := range s.config.Rules {
+		matched, err := matchRemotePattern(rule.Pattern, remote)
+		if err != nil {
+			return fmt.Errorf("match pattern %q: %w", rule.Pattern, err)
+		}
+		if !matched {
+			continue
+		}
+
+		s.log.Debug().
+			Str("pattern", rule.Pattern).
+			Strs("commands", rule.Commands).
+			Strs("copy", rule.Copy).
+			Msg("rule matched")
+
+		// Copy files first (so hooks can operate on them)
+		if len(rule.Copy) > 0 && source != "" {
+			if err := s.fileCopier.CopyFiles(ctx, rule, source, dest); err != nil {
+				return fmt.Errorf("copy files: %w", err)
+			}
+		}
+
+		// Run commands
+		if len(rule.Commands) > 0 {
+			if err := s.hookRunner.RunHooks(ctx, rule, dest); err != nil {
+				return fmt.Errorf("run hooks: %w", err)
+			}
+		}
+	}
+	return nil
 }

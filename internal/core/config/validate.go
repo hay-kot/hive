@@ -54,8 +54,7 @@ func (c *Config) ValidateDeep(configPath string) error {
 		c.validateFileAccess(configPath),
 		validateTemplates("commands.spawn", c.Commands.Spawn, SpawnTemplateData{}),
 		validateTemplates("commands.recycle", c.Commands.Recycle, RecycleTemplateData{}),
-		c.validateHooks(),
-		c.validateCopyRules(),
+		c.validateRules(),
 		c.validateKeybindingTemplates(),
 	)
 }
@@ -72,22 +71,12 @@ func (c *Config) Warnings() []ValidationWarning {
 		})
 	}
 
-	for i, hook := range c.Hooks {
-		if len(hook.Commands) == 0 {
+	for i, rule := range c.Rules {
+		if len(rule.Commands) == 0 && len(rule.Copy) == 0 {
 			warnings = append(warnings, ValidationWarning{
-				Category: "Hooks",
-				Item:     fmt.Sprintf("hook %d", i),
-				Message:  "hook has no commands defined",
-			})
-		}
-	}
-
-	for i, rule := range c.Copy {
-		if len(rule.Files) == 0 {
-			warnings = append(warnings, ValidationWarning{
-				Category: "Copy Rules",
+				Category: "Rules",
 				Item:     fmt.Sprintf("rule %d", i),
-				Message:  "copy rule has no files defined",
+				Message:  "rule has neither commands nor copy defined",
 			})
 		}
 	}
@@ -162,26 +151,15 @@ func validateTemplates(fieldPrefix string, commands []string, data any) error {
 	return errs.ToError()
 }
 
-// validateHooks checks hook patterns are valid regex.
-func (c *Config) validateHooks() error {
+// validateRules checks rule patterns are valid regex.
+func (c *Config) validateRules() error {
 	var errs criterio.FieldErrorsBuilder
-	for i, hook := range c.Hooks {
-		if _, err := regexp.Compile(hook.Pattern); err != nil {
-			errs = errs.Append(fmt.Sprintf("hooks[%d].pattern", i), fmt.Errorf("invalid regex %q: %w", hook.Pattern, err))
-		}
-	}
-	return errs.ToError()
-}
-
-// validateCopyRules checks copy rule patterns are valid regex.
-func (c *Config) validateCopyRules() error {
-	var errs criterio.FieldErrorsBuilder
-	for i, rule := range c.Copy {
+	for i, rule := range c.Rules {
 		if rule.Pattern == "" {
 			continue // empty pattern matches all, valid
 		}
 		if _, err := regexp.Compile(rule.Pattern); err != nil {
-			errs = errs.Append(fmt.Sprintf("copy[%d].pattern", i), fmt.Errorf("invalid regex %q: %w", rule.Pattern, err))
+			errs = errs.Append(fmt.Sprintf("rules[%d].pattern", i), fmt.Errorf("invalid regex %q: %w", rule.Pattern, err))
 		}
 	}
 	return errs.ToError()

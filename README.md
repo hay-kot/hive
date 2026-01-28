@@ -129,14 +129,18 @@ commands:
 # Git executable (optional, defaults to "git")
 git_path: git
 
-# Repository-specific setup hooks
-# Pattern uses glob syntax (supports ** for path matching)
-hooks:
-  - pattern: "**/my-org/**"
+# Rules for repository-specific setup
+# Each rule can have commands (hooks) and/or copy patterns
+# Pattern uses regex syntax matched against the remote URL
+rules:
+  - pattern: ".*/my-org/.*"
     commands:
       - npm install
       - npm run build
-  - pattern: "**github.com/hay-kot/**"
+    copy:
+      - .envrc
+      - configs/*.yaml
+  - pattern: ".*/hay-kot/.*"
     commands:
       - go mod download
 
@@ -176,15 +180,16 @@ keybindings:
 | `commands.spawn`   | `[]string`              | `[]`                                                    | Commands to run after session creation (Go templates supported) |
 | `commands.recycle` | `[]string`              | `["git reset --hard", "git checkout main", "git pull"]` | Commands to run when recycling a session                        |
 | `git_path`         | `string`                | `git`                                                   | Path to git executable                                          |
-| `hooks`            | `[]Hook`                | `[]`                                                    | Repository-specific setup commands                              |
+| `rules`            | `[]Rule`                | `[]`                                                    | Repository-specific setup rules                                 |
 | `keybindings`      | `map[string]Keybinding` | see below                                               | TUI keybinding configuration                                    |
 
-### Hooks
+### Rules
 
-Hooks run after cloning or recycling a session. Each hook has:
+Rules run after cloning or recycling a session. Each rule has:
 
-- `pattern`: Glob pattern matched against the remote URL (supports `**` for path matching)
+- `pattern`: Regex pattern matched against the remote URL (empty matches all)
 - `commands`: Shell commands to execute in the session directory
+- `copy`: Glob patterns for files to copy from the source directory
 
 ### Keybindings
 

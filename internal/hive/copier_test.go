@@ -19,61 +19,26 @@ func TestFileCopier_CopyFiles(t *testing.T) {
 
 	tests := []struct {
 		name       string
-		rules      []config.CopyRule
-		remote     string
+		rule       config.Rule
 		setupFiles map[string]string // relative path -> content
 		wantFiles  map[string]string // relative path -> content
 		wantErr    bool
 	}{
 		{
-			name:       "empty rules",
-			rules:      nil,
-			remote:     "https://github.com/test/repo",
+			name:       "empty copy patterns",
+			rule:       config.Rule{Copy: nil},
 			setupFiles: map[string]string{"test.txt": "content"},
 			wantFiles:  nil,
 		},
 		{
-			name: "empty pattern matches all",
-			rules: []config.CopyRule{
-				{Pattern: "", Files: []string{"test.txt"}},
-			},
-			remote:     "https://github.com/test/repo",
-			setupFiles: map[string]string{"test.txt": "content"},
-			wantFiles:  map[string]string{"test.txt": "content"},
-		},
-		{
-			name: "pattern matches",
-			rules: []config.CopyRule{
-				{Pattern: ".*/test/repo", Files: []string{"test.txt"}},
-			},
-			remote:     "https://github.com/test/repo",
-			setupFiles: map[string]string{"test.txt": "content"},
-			wantFiles:  map[string]string{"test.txt": "content"},
-		},
-		{
-			name: "pattern does not match",
-			rules: []config.CopyRule{
-				{Pattern: ".*/other/repo", Files: []string{"test.txt"}},
-			},
-			remote:     "https://github.com/test/repo",
-			setupFiles: map[string]string{"test.txt": "content"},
-			wantFiles:  nil,
-		},
-		{
-			name: "single file copy",
-			rules: []config.CopyRule{
-				{Pattern: "", Files: []string{".envrc"}},
-			},
-			remote:     "https://github.com/test/repo",
+			name:       "single file copy",
+			rule:       config.Rule{Copy: []string{".envrc"}},
 			setupFiles: map[string]string{".envrc": "export FOO=bar"},
 			wantFiles:  map[string]string{".envrc": "export FOO=bar"},
 		},
 		{
 			name: "wildcard pattern",
-			rules: []config.CopyRule{
-				{Pattern: "", Files: []string{"*.txt"}},
-			},
-			remote: "https://github.com/test/repo",
+			rule: config.Rule{Copy: []string{"*.txt"}},
 			setupFiles: map[string]string{
 				"a.txt":  "a content",
 				"b.txt":  "b content",
@@ -86,10 +51,7 @@ func TestFileCopier_CopyFiles(t *testing.T) {
 		},
 		{
 			name: "doublestar pattern",
-			rules: []config.CopyRule{
-				{Pattern: "", Files: []string{"configs/**/*.yaml"}},
-			},
-			remote: "https://github.com/test/repo",
+			rule: config.Rule{Copy: []string{"configs/**/*.yaml"}},
 			setupFiles: map[string]string{
 				"configs/dev/app.yaml":  "dev config",
 				"configs/prod/app.yaml": "prod config",
@@ -104,21 +66,14 @@ func TestFileCopier_CopyFiles(t *testing.T) {
 			},
 		},
 		{
-			name: "glob matches nothing warns but continues",
-			rules: []config.CopyRule{
-				{Pattern: "", Files: []string{"nonexistent.txt", "exists.txt"}},
-			},
-			remote:     "https://github.com/test/repo",
+			name:       "glob matches nothing warns but continues",
+			rule:       config.Rule{Copy: []string{"nonexistent.txt", "exists.txt"}},
 			setupFiles: map[string]string{"exists.txt": "content"},
 			wantFiles:  map[string]string{"exists.txt": "content"},
 		},
 		{
-			name: "multiple rules",
-			rules: []config.CopyRule{
-				{Pattern: "", Files: []string{".envrc"}},
-				{Pattern: ".*/test/repo", Files: []string{".tool-versions"}},
-			},
-			remote: "https://github.com/test/repo",
+			name: "multiple patterns",
+			rule: config.Rule{Copy: []string{".envrc", ".tool-versions"}},
 			setupFiles: map[string]string{
 				".envrc":         "envrc content",
 				".tool-versions": "golang 1.21",
@@ -151,7 +106,7 @@ func TestFileCopier_CopyFiles(t *testing.T) {
 			copier := NewFileCopier(log, &buf)
 
 			// Run copy
-			err := copier.CopyFiles(context.Background(), tt.rules, tt.remote, sourceDir, destDir)
+			err := copier.CopyFiles(context.Background(), tt.rule, sourceDir, destDir)
 			if tt.wantErr {
 				require.Error(t, err)
 				return
@@ -199,11 +154,9 @@ func TestFileCopier_PreservesPermissions(t *testing.T) {
 	log := zerolog.New(&buf).Level(zerolog.DebugLevel)
 	copier := NewFileCopier(log, &buf)
 
-	rules := []config.CopyRule{
-		{Pattern: "", Files: []string{"script.sh"}},
-	}
+	rule := config.Rule{Copy: []string{"script.sh"}}
 
-	err := copier.CopyFiles(context.Background(), rules, "remote", sourceDir, destDir)
+	err := copier.CopyFiles(context.Background(), rule, sourceDir, destDir)
 	require.NoError(t, err)
 
 	// Check permissions
@@ -231,11 +184,9 @@ func TestFileCopier_OverwritesExisting(t *testing.T) {
 	log := zerolog.New(&buf).Level(zerolog.DebugLevel)
 	copier := NewFileCopier(log, &buf)
 
-	rules := []config.CopyRule{
-		{Pattern: "", Files: []string{"config.txt"}},
-	}
+	rule := config.Rule{Copy: []string{"config.txt"}}
 
-	err := copier.CopyFiles(context.Background(), rules, "remote", sourceDir, destDir)
+	err := copier.CopyFiles(context.Background(), rule, sourceDir, destDir)
 	require.NoError(t, err)
 
 	// Verify overwritten
@@ -259,11 +210,9 @@ func TestFileCopier_CreatesParentDirectories(t *testing.T) {
 	log := zerolog.New(&buf).Level(zerolog.DebugLevel)
 	copier := NewFileCopier(log, &buf)
 
-	rules := []config.CopyRule{
-		{Pattern: "", Files: []string{"a/b/c/file.txt"}},
-	}
+	rule := config.Rule{Copy: []string{"a/b/c/file.txt"}}
 
-	err := copier.CopyFiles(context.Background(), rules, "remote", sourceDir, destDir)
+	err := copier.CopyFiles(context.Background(), rule, sourceDir, destDir)
 	require.NoError(t, err)
 
 	// Verify file exists
@@ -286,14 +235,12 @@ func TestFileCopier_RespectsContextCancellation(t *testing.T) {
 	log := zerolog.New(&buf).Level(zerolog.DebugLevel)
 	copier := NewFileCopier(log, &buf)
 
-	rules := []config.CopyRule{
-		{Pattern: "", Files: []string{"test.txt"}},
-	}
+	rule := config.Rule{Copy: []string{"test.txt"}}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // Cancel immediately
 
-	err := copier.CopyFiles(ctx, rules, "remote", sourceDir, destDir)
+	err := copier.CopyFiles(ctx, rule, sourceDir, destDir)
 	assert.ErrorIs(t, err, context.Canceled)
 }
 
@@ -314,11 +261,9 @@ func TestFileCopier_CopiesSymlink(t *testing.T) {
 	log := zerolog.New(&buf).Level(zerolog.DebugLevel)
 	copier := NewFileCopier(log, &buf)
 
-	rules := []config.CopyRule{
-		{Pattern: "", Files: []string{"link.txt"}},
-	}
+	rule := config.Rule{Copy: []string{"link.txt"}}
 
-	err := copier.CopyFiles(context.Background(), rules, "remote", sourceDir, destDir)
+	err := copier.CopyFiles(context.Background(), rule, sourceDir, destDir)
 	require.NoError(t, err)
 
 	// Verify the destination is a symlink with the same target
@@ -347,11 +292,9 @@ func TestFileCopier_CopiesSymlinkWithAbsoluteTarget(t *testing.T) {
 	log := zerolog.New(&buf).Level(zerolog.DebugLevel)
 	copier := NewFileCopier(log, &buf)
 
-	rules := []config.CopyRule{
-		{Pattern: "", Files: []string{"abs-link"}},
-	}
+	rule := config.Rule{Copy: []string{"abs-link"}}
 
-	err := copier.CopyFiles(context.Background(), rules, "remote", sourceDir, destDir)
+	err := copier.CopyFiles(context.Background(), rule, sourceDir, destDir)
 	require.NoError(t, err)
 
 	// Verify the symlink target is preserved
@@ -379,11 +322,9 @@ func TestFileCopier_OverwritesExistingSymlink(t *testing.T) {
 	log := zerolog.New(&buf).Level(zerolog.DebugLevel)
 	copier := NewFileCopier(log, &buf)
 
-	rules := []config.CopyRule{
-		{Pattern: "", Files: []string{"link"}},
-	}
+	rule := config.Rule{Copy: []string{"link"}}
 
-	err := copier.CopyFiles(context.Background(), rules, "remote", sourceDir, destDir)
+	err := copier.CopyFiles(context.Background(), rule, sourceDir, destDir)
 	require.NoError(t, err)
 
 	// Verify the symlink was overwritten

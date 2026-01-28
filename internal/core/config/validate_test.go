@@ -27,7 +27,7 @@ func TestValidateDeep_ValidConfig(t *testing.T) {
 		Spawn:   []string{"echo {{.Path}}", "echo {{.Name}} {{.Prompt}}"},
 		Recycle: []string{"git reset --hard", "git checkout main"},
 	}
-	cfg.Hooks = []Hook{
+	cfg.Rules = []Rule{
 		{Pattern: "^https://github.com/.*", Commands: []string{"echo hello"}},
 	}
 	cfg.Keybindings = map[string]Keybinding{
@@ -83,9 +83,9 @@ func TestValidateDeep_ValidRecycleTemplate(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func TestValidateDeep_InvalidHookPattern(t *testing.T) {
+func TestValidateDeep_InvalidRulePattern(t *testing.T) {
 	cfg := validConfig(t)
-	cfg.Hooks = []Hook{
+	cfg.Rules = []Rule{
 		{Pattern: "[invalid", Commands: []string{"echo"}},
 	}
 
@@ -94,7 +94,7 @@ func TestValidateDeep_InvalidHookPattern(t *testing.T) {
 	var fieldErrs criterio.FieldErrors
 	require.ErrorAs(t, err, &fieldErrs)
 	assert.Len(t, fieldErrs, 1)
-	assert.Contains(t, fieldErrs[0].Field, "hooks")
+	assert.Contains(t, fieldErrs[0].Field, "rules")
 	assert.Contains(t, fieldErrs[0].Err.Error(), "invalid regex")
 }
 
@@ -224,10 +224,10 @@ func TestValidateDeep_ConfigFileIsDirectory(t *testing.T) {
 	assert.True(t, hasConfigError, "expected error about config file being a directory")
 }
 
-func TestWarnings_EmptyHookCommands(t *testing.T) {
+func TestWarnings_EmptyRule(t *testing.T) {
 	cfg := validConfig(t)
-	cfg.Hooks = []Hook{
-		{Pattern: ".*", Commands: []string{}},
+	cfg.Rules = []Rule{
+		{Pattern: ".*"},
 	}
 
 	err := cfg.ValidateDeep("")
@@ -236,12 +236,12 @@ func TestWarnings_EmptyHookCommands(t *testing.T) {
 	warnings := cfg.Warnings()
 	hasWarning := false
 	for _, w := range warnings {
-		if w.Category == "Hooks" && strings.Contains(w.Message, "no commands") {
+		if w.Category == "Rules" && strings.Contains(w.Message, "neither commands nor copy") {
 			hasWarning = true
 			break
 		}
 	}
-	assert.True(t, hasWarning, "expected warning about empty hook commands")
+	assert.True(t, hasWarning, "expected warning about empty rule")
 }
 
 func TestWarnings_EmptyRecycleCommands(t *testing.T) {
@@ -264,48 +264,27 @@ func TestWarnings_EmptyRecycleCommands(t *testing.T) {
 	assert.True(t, hasWarning, "expected warning about empty recycle commands")
 }
 
-func TestValidateDeep_ValidCopyRules(t *testing.T) {
+func TestValidateDeep_ValidRulesWithCopy(t *testing.T) {
 	cfg := validConfig(t)
-	cfg.Copy = []CopyRule{
-		{Pattern: "", Files: []string{".envrc"}},
-		{Pattern: "^https://github.com/.*", Files: []string{"*.yaml"}},
+	cfg.Rules = []Rule{
+		{Pattern: "", Copy: []string{".envrc"}},
+		{Pattern: "^https://github.com/.*", Copy: []string{"*.yaml"}},
 	}
 
 	err := cfg.ValidateDeep("")
 	assert.NoError(t, err)
 }
 
-func TestValidateDeep_InvalidCopyRulePattern(t *testing.T) {
+func TestValidateDeep_ValidRulesWithCommandsAndCopy(t *testing.T) {
 	cfg := validConfig(t)
-	cfg.Copy = []CopyRule{
-		{Pattern: "[invalid", Files: []string{".envrc"}},
+	cfg.Rules = []Rule{
+		{
+			Pattern:  "^https://github.com/hay-kot/.*",
+			Commands: []string{"mise trust", "task dep:sync"},
+			Copy:     []string{".envrc", "configs/*.yaml"},
+		},
 	}
 
 	err := cfg.ValidateDeep("")
-
-	var fieldErrs criterio.FieldErrors
-	require.ErrorAs(t, err, &fieldErrs)
-	assert.Len(t, fieldErrs, 1)
-	assert.Contains(t, fieldErrs[0].Field, "copy")
-	assert.Contains(t, fieldErrs[0].Err.Error(), "invalid regex")
-}
-
-func TestWarnings_EmptyCopyRuleFiles(t *testing.T) {
-	cfg := validConfig(t)
-	cfg.Copy = []CopyRule{
-		{Pattern: ".*", Files: []string{}},
-	}
-
-	err := cfg.ValidateDeep("")
-	require.NoError(t, err)
-
-	warnings := cfg.Warnings()
-	hasWarning := false
-	for _, w := range warnings {
-		if w.Category == "Copy Rules" && strings.Contains(w.Message, "no files") {
-			hasWarning = true
-			break
-		}
-	}
-	assert.True(t, hasWarning, "expected warning about empty copy rule files")
+	assert.NoError(t, err)
 }

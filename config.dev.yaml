@@ -11,7 +11,7 @@ commands:
     - git checkout main
     - git pull
 
-hooks:
+rules:
   - pattern: ".*/hay-kot/recipinned"
     commands:
       - mise trust
