@@ -2,7 +2,6 @@ package tui
 
 import (
 	"context"
-	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -737,41 +736,60 @@ func (m Model) View() string {
 
 // renderSplitView renders the two-column split layout.
 func (m Model) renderSplitView() string {
-	// Calculate pane widths (leave 1 char for divider)
-	paneWidth := (m.width - 1) / 2
-	listHeight := m.height - 6 // Account for focus indicator line
-	if listHeight < 1 {
-		listHeight = 1
-	}
+	// Calculate pane widths (account for borders: 2 chars per pane + 1 gap)
+	paneWidth := max((m.width-5)/2, 10)
 
-	// Build focus indicators with background tint for active pane
-	var leftHeader, rightHeader string
-	if m.focusedPane == PaneSessions {
-		leftHeader = focusedHeaderStyle.Render(focusIndicatorStyle.Render("▸ ") + viewSelectedStyle.Render("Sessions"))
-		rightHeader = unfocusedHeaderStyle.Render("  " + viewNormalStyle.Render("Message Bus"))
-	} else {
-		leftHeader = unfocusedHeaderStyle.Render("  " + viewNormalStyle.Render("Sessions"))
-		rightHeader = focusedHeaderStyle.Render(focusIndicatorStyle.Render("▸ ") + viewSelectedStyle.Render("Message Bus"))
-	}
-	leftIndicator := lipgloss.NewStyle().Width(paneWidth).Render(leftHeader)
-	rightIndicator := lipgloss.NewStyle().Width(paneWidth).Render(rightHeader)
+	// Calculate content height (subtract border space)
+	listHeight := max(m.height-4, 1) // Account for top/bottom borders
 
-	// Build divider (vertical line)
-	divider := m.renderDivider(listHeight)
-
-	// Render left pane (sessions) and right pane (messages)
+	// Render pane content
 	leftContent := m.list.View()
 	rightContent := m.msgList.View()
 
-	// Use fixed width styling
-	leftPane := lipgloss.NewStyle().Width(paneWidth).Render(leftContent)
-	rightPane := lipgloss.NewStyle().Width(paneWidth).Render(rightContent)
+	// Build pane titles
+	leftTitle := "Sessions"
+	rightTitle := "Message Bus"
 
-	// Combine indicators and content
-	indicatorRow := lipgloss.JoinHorizontal(lipgloss.Top, leftIndicator, " ", rightIndicator)
-	contentRow := lipgloss.JoinHorizontal(lipgloss.Top, leftPane, divider, rightPane)
+	// Apply focused/unfocused styles with borders
+	var leftPane, rightPane string
+	if m.focusedPane == PaneSessions {
+		leftPane = focusedPaneStyle.
+			Width(paneWidth).
+			Height(listHeight).
+			BorderTop(true).
+			BorderBottom(true).
+			BorderLeft(true).
+			BorderRight(true).
+			Render(viewSelectedStyle.Render("▸ "+leftTitle) + "\n" + leftContent)
+		rightPane = unfocusedPaneStyle.
+			Width(paneWidth).
+			Height(listHeight).
+			BorderTop(true).
+			BorderBottom(true).
+			BorderLeft(true).
+			BorderRight(true).
+			Render(viewNormalStyle.Render("  "+rightTitle) + "\n" + rightContent)
+	} else {
+		leftPane = unfocusedPaneStyle.
+			Width(paneWidth).
+			Height(listHeight).
+			BorderTop(true).
+			BorderBottom(true).
+			BorderLeft(true).
+			BorderRight(true).
+			Render(viewNormalStyle.Render("  "+leftTitle) + "\n" + leftContent)
+		rightPane = focusedPaneStyle.
+			Width(paneWidth).
+			Height(listHeight).
+			BorderTop(true).
+			BorderBottom(true).
+			BorderLeft(true).
+			BorderRight(true).
+			Render(viewSelectedStyle.Render("▸ "+rightTitle) + "\n" + rightContent)
+	}
 
-	return lipgloss.JoinVertical(lipgloss.Left, indicatorRow, contentRow)
+	// Join panes horizontally with a small gap
+	return lipgloss.JoinHorizontal(lipgloss.Top, leftPane, " ", rightPane)
 }
 
 // renderTabView renders the single-view tab layout.
@@ -796,16 +814,6 @@ func (m Model) renderTabView() string {
 	}
 
 	return lipgloss.JoinVertical(lipgloss.Left, tabBar, content)
-}
-
-// renderDivider renders a vertical divider.
-func (m Model) renderDivider(height int) string {
-	dividerChars := strings.Repeat("│\n", height)
-	// Remove trailing newline
-	if len(dividerChars) > 0 {
-		dividerChars = dividerChars[:len(dividerChars)-1]
-	}
-	return dividerStyle.Render(dividerChars)
 }
 
 // buildTitle constructs the list title.
