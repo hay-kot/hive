@@ -6,6 +6,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"runtime"
 
 	"github.com/hay-kot/criterio"
 	"gopkg.in/yaml.v3"
@@ -76,9 +77,10 @@ type Rule struct {
 
 // Commands defines the shell commands used by hive.
 type Commands struct {
-	Spawn      []string `yaml:"spawn"`
-	BatchSpawn []string `yaml:"batch_spawn"`
-	Recycle    []string `yaml:"recycle"`
+	Spawn       []string `yaml:"spawn"`
+	BatchSpawn  []string `yaml:"batch_spawn"`
+	Recycle     []string `yaml:"recycle"`
+	CopyCommand string   `yaml:"copy_command"` // command to copy to clipboard (e.g., pbcopy, xclip)
 }
 
 // Keybinding defines a TUI keybinding action.
@@ -161,6 +163,22 @@ func (c *Config) applyDefaults() {
 	}
 	if c.Context.SymlinkName == "" {
 		c.Context.SymlinkName = defaults.Context.SymlinkName
+	}
+	if c.Commands.CopyCommand == "" {
+		c.Commands.CopyCommand = defaultCopyCommand()
+	}
+}
+
+// defaultCopyCommand returns the default clipboard command for the current OS.
+func defaultCopyCommand() string {
+	switch runtime.GOOS {
+	case "darwin":
+		return "pbcopy"
+	case "windows":
+		return "clip"
+	default:
+		// Linux and others - try xclip first, fall back to xsel
+		return "xclip -selection clipboard"
 	}
 }
 

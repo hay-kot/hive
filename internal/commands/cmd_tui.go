@@ -3,10 +3,12 @@ package commands
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/urfave/cli/v3"
 
+	"github.com/hay-kot/hive/internal/store/jsonfile"
 	"github.com/hay-kot/hive/internal/tui"
 )
 
@@ -58,10 +60,15 @@ func (cmd *TuiCmd) run(ctx context.Context, _ *cli.Command) error {
 		// If detection fails (not in a git repo), show all sessions
 	}
 
+	// Create message store for pub/sub events
+	topicsDir := filepath.Join(cmd.flags.DataDir, "messages", "topics")
+	msgStore := jsonfile.NewMsgStore(topicsDir)
+
 	opts := tui.Options{
 		ShowAll:      cmd.showAll,
 		LocalRemote:  localRemote,
 		HideRecycled: cmd.hideRecycled,
+		MsgStore:     msgStore,
 	}
 
 	m := tui.New(cmd.flags.Service, cmd.flags.Config, opts)

@@ -18,12 +18,6 @@ var (
 
 // Styles used for rendering the TUI (lipgloss v1 for bubbles compatibility).
 var (
-	// Title style for the list header.
-	titleStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(colorBlue).
-			PaddingLeft(1)
-
 	// Active session state style.
 	activeStyle = lipgloss.NewStyle().
 			Foreground(colorGreen)
@@ -58,7 +52,7 @@ const (
 // Use shared banner and style.
 var (
 	banner      = styles.Banner
-	bannerStyle = styles.BannerStyle.PaddingLeft(1).PaddingBottom(1)
+	bannerStyle = styles.BannerStyle.PaddingTop(1).PaddingLeft(1).PaddingBottom(1)
 )
 
 // Modal styles using lipgloss v2 for canvas/layer support.
@@ -110,5 +104,37 @@ var (
 			Foreground(colorYellow)
 
 	gitLoadingStyle = lipgloss.NewStyle().
+			Foreground(colorGray)
+)
+
+// Color pool for deterministic color hashing of topics and senders.
+var colorPool = []lipgloss.Color{
+	lipgloss.Color("#9ece6a"), // green
+	lipgloss.Color("#7aa2f7"), // blue
+	lipgloss.Color("#e0af68"), // yellow
+	lipgloss.Color("#bb9af7"), // purple
+	lipgloss.Color("#7dcfff"), // cyan
+	lipgloss.Color("#f7768e"), // red/pink
+	lipgloss.Color("#ff9e64"), // orange
+	lipgloss.Color("#73daca"), // teal
+}
+
+// ColorForString returns a deterministic color for a given string.
+// The same string always produces the same color.
+func ColorForString(s string) lipgloss.Color {
+	var hash uint32
+	for _, c := range s {
+		hash = hash*31 + uint32(c)
+	}
+	return colorPool[hash%uint32(len(colorPool))]
+}
+
+// Layout styles for tab views.
+var (
+	viewSelectedStyle = lipgloss.NewStyle().
+				Foreground(colorBlue).
+				Bold(true)
+
+	viewNormalStyle = lipgloss.NewStyle().
 			Foreground(colorGray)
 )
