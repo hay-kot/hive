@@ -273,8 +273,8 @@ func (v *MessagesView) View() string {
 		b.WriteString("\n")
 	}
 
-	// Help line (pinned to bottom)
-	help := lipgloss.NewStyle().Foreground(colorGray).Render(" ↑/↓ navigate • enter preview • / filter • tab switch view")
+	// Help line (pinned to bottom, styled to match sessions view)
+	help := lipgloss.NewStyle().Foreground(colorGray).PaddingLeft(1).Render("↑/↓ navigate • enter preview • / filter • tab switch view")
 	b.WriteString(help)
 
 	return b.String()

@@ -34,10 +34,8 @@ const keyEnter = "enter"
 
 // Options configures the TUI behavior.
 type Options struct {
-	ShowAll      bool            // Show all sessions vs only local repository
-	LocalRemote  string          // Remote URL of current directory (empty if not in git repo)
-	HideRecycled bool            // Hide recycled sessions by default
-	MsgStore     messaging.Store // Message store for pub/sub events (optional)
+	LocalRemote string          // Remote URL of current directory (empty if not in git repo)
+	MsgStore    messaging.Store // Message store for pub/sub events (optional)
 }
 
 // Model is the main Bubble Tea model for the TUI.
@@ -56,12 +54,11 @@ type Model struct {
 	quitting       bool
 	gitStatuses    *kv.Store[string, GitStatus]
 	gitWorkers     int
+	columnWidths   *ColumnWidths
 
 	// Filtering
-	showAll      bool              // Toggle for showing all vs local sessions
-	localRemote  string            // Remote URL of current directory
-	hideRecycled bool              // Toggle for hiding recycled sessions
-	allSessions  []session.Session // All sessions (unfiltered)
+	localRemote string            // Remote URL of current directory (for highlighting)
+	allSessions []session.Session // All sessions (unfiltered)
 
 	// Recycle streaming state
 	outputModal   OutputModal
@@ -117,9 +114,11 @@ type recycleCompleteMsg struct {
 // New creates a new TUI model.
 func New(service *hive.Service, cfg *config.Config, opts Options) Model {
 	gitStatuses := kv.New[string, GitStatus]()
+	columnWidths := &ColumnWidths{}
 
-	delegate := NewSessionDelegate()
+	delegate := NewTreeDelegate()
 	delegate.GitStatuses = gitStatuses
+	delegate.ColumnWidths = columnWidths
 
 	l := list.New([]list.Item{}, delegate, 0, 0)
 	l.SetShowStatusBar(false)
@@ -130,10 +129,18 @@ func New(service *hive.Service, cfg *config.Config, opts Options) Model {
 	l.FilterInput.Prompt = "Filter: "
 	l.Styles.FilterCursor = lipgloss.NewStyle().Foreground(colorBlue)
 
-	handler := NewKeybindingHandler(cfg.Keybindings, service)
+	// Style help to match messages view (consistent gray, bullet separators, left padding)
+	helpStyle := lipgloss.NewStyle().Foreground(colorGray)
+	l.Help.Styles.ShortKey = helpStyle
+	l.Help.Styles.ShortDesc = helpStyle
+	l.Help.Styles.ShortSeparator = helpStyle
+	l.Help.Styles.FullKey = helpStyle
+	l.Help.Styles.FullDesc = helpStyle
+	l.Help.Styles.FullSeparator = helpStyle
+	l.Help.ShortSeparator = " • "
+	l.Styles.HelpStyle = lipgloss.NewStyle().PaddingLeft(1)
 
-	// If no local remote detected, force show all
-	showAll := opts.ShowAll || opts.LocalRemote == ""
+	handler := NewKeybindingHandler(cfg.Keybindings, service)
 
 	// Add custom keybindings to list help
 	l.AdditionalShortHelpKeys = func() []key.Binding {
@@ -142,16 +149,6 @@ func New(service *hive.Service, cfg *config.Config, opts Options) Model {
 		bindings = append(bindings, key.NewBinding(
 			key.WithKeys("g"),
 			key.WithHelp("g", "refresh git"),
-		))
-		// Add toggle all keybinding
-		bindings = append(bindings, key.NewBinding(
-			key.WithKeys("a"),
-			key.WithHelp("a", "toggle all"),
-		))
-		// Add toggle recycled keybinding
-		bindings = append(bindings, key.NewBinding(
-			key.WithKeys("x"),
-			key.WithHelp("x", "toggle recycled"),
 		))
 		// Add tab keybinding for view switching
 		bindings = append(bindings, key.NewBinding(
@@ -176,9 +173,8 @@ func New(service *hive.Service, cfg *config.Config, opts Options) Model {
 		spinner:      s,
 		gitStatuses:  gitStatuses,
 		gitWorkers:   cfg.Git.StatusWorkers,
-		showAll:      showAll,
+		columnWidths: columnWidths,
 		localRemote:  opts.LocalRemote,
-		hideRecycled: opts.HideRecycled,
 		msgStore:     opts.MsgStore,
 		msgView:      msgView,
 		topicFilter:  "*",
@@ -221,14 +217,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 
-		// Account for: banner (4 lines + 1 margin) + tab bar (1) + subheading (1) = 7 lines
-		contentHeight := msg.Height - 7
+		// Account for: banner (5 lines) + tab bar (1) = 6 lines
+		// (spacing line is included in list's titleView and msgView's prefix)
+		contentHeight := msg.Height - 6
 		if contentHeight < 1 {
 			contentHeight = 1
 		}
 
 		m.list.SetSize(msg.Width, contentHeight)
-		m.msgView.SetSize(msg.Width, contentHeight)
+		// msgView gets -1 because we prepend a blank line for consistent spacing
+		m.msgView.SetSize(msg.Width, contentHeight-1)
 		return m, nil
 
 	case messagesLoadedMsg:
@@ -500,17 +498,8 @@ func (m Model) handleNormalKey(msg tea.KeyMsg, keyStr string) (tea.Model, tea.Cm
 
 	// Session-specific keys only when sessions focused
 	if m.isSessionsFocused() {
-		switch keyStr {
-		case "g":
+		if keyStr == "g" {
 			return m, m.refreshGitStatuses()
-		case "a":
-			if m.localRemote != "" {
-				m.showAll = !m.showAll
-				return m.applyFilter()
-			}
-		case "x":
-			m.hideRecycled = !m.hideRecycled
-			return m.applyFilter()
 		}
 		return m.handleSessionsKey(msg, keyStr)
 	}
@@ -580,11 +569,14 @@ func (m Model) selectedSession() *session.Session {
 	if item == nil {
 		return nil
 	}
-	sessionItem, ok := item.(SessionItem)
-	if !ok {
-		return nil
+	// Handle TreeItem (tree view mode)
+	if treeItem, ok := item.(TreeItem); ok {
+		if treeItem.IsHeader {
+			return nil // Headers aren't sessions
+		}
+		return &treeItem.Session
 	}
-	return &sessionItem.Session
+	return nil
 }
 
 // selectedMessage returns the currently selected message, or nil if none.
@@ -607,28 +599,22 @@ func (m Model) shouldPollMessages() bool {
 	return m.activeView == ViewMessages
 }
 
-// applyFilter filters sessions based on showAll and hideRecycled flags.
+// applyFilter rebuilds the tree view from all sessions.
 func (m Model) applyFilter() (tea.Model, tea.Cmd) {
-	var filtered []session.Session
-	for _, s := range m.allSessions {
-		// Filter by local remote
-		if !m.showAll && m.localRemote != "" && s.Remote != m.localRemote {
-			continue
-		}
-		// Filter recycled sessions
-		if m.hideRecycled && s.State == session.StateRecycled {
-			continue
-		}
-		filtered = append(filtered, s)
-	}
+	// Group sessions by repository and build tree items
+	groups := GroupSessionsByRepo(m.allSessions, m.localRemote)
+	items := BuildTreeItems(groups, m.localRemote)
 
-	items := make([]list.Item, len(filtered))
-	paths := make([]string, len(filtered))
-	for i, s := range filtered {
-		items[i] = SessionItem{Session: s}
-		paths[i] = s.Path
+	// Calculate column widths across all sessions
+	*m.columnWidths = CalculateColumnWidths(m.allSessions, nil)
+
+	// Collect paths for git status fetching
+	paths := make([]string, 0, len(m.allSessions))
+	for _, s := range m.allSessions {
+		paths = append(paths, s.Path)
 		m.gitStatuses.Set(s.Path, GitStatus{IsLoading: true})
 	}
+
 	m.list.SetItems(items)
 	m.state = stateNormal
 
@@ -644,11 +630,11 @@ func (m Model) refreshGitStatuses() tea.Cmd {
 	paths := make([]string, 0, len(items))
 
 	for _, item := range items {
-		sessionItem, ok := item.(SessionItem)
-		if !ok {
+		treeItem, ok := item.(TreeItem)
+		if !ok || treeItem.IsHeader {
 			continue
 		}
-		path := sessionItem.Session.Path
+		path := treeItem.Session.Path
 		paths = append(paths, path)
 		// Mark as loading
 		m.gitStatuses.Set(path, GitStatus{IsLoading: true})
@@ -717,39 +703,28 @@ func (m Model) renderTabView() string {
 		sessionsTab = viewNormalStyle.Render("Sessions")
 		messagesTab = viewSelectedStyle.Render("Messages")
 	}
-	tabBar := lipgloss.JoinHorizontal(lipgloss.Left, " ", sessionsTab, " | ", messagesTab)
+	tabBarContent := lipgloss.JoinHorizontal(lipgloss.Left, sessionsTab, " | ", messagesTab)
+	tabBar := lipgloss.NewStyle().PaddingLeft(1).Render(tabBarContent)
 
-	// Build subheading (always present to prevent layout shift)
-	subheading := m.buildSubheading()
+	// Calculate content height: total - banner (5) - tab bar (1)
+	contentHeight := m.height - 6
+	if contentHeight < 1 {
+		contentHeight = 1
+	}
 
-	// Build content
+	// Build content with fixed height to prevent layout shift
 	var content string
 	if m.activeView == ViewSessions {
 		content = m.list.View()
 	} else {
-		content = m.msgView.View()
+		// Add blank line to match list's internal titleView padding
+		content = "\n" + m.msgView.View()
 	}
 
-	return lipgloss.JoinVertical(lipgloss.Left, tabBar, subheading, content)
-}
+	// Ensure consistent height
+	content = lipgloss.NewStyle().Height(contentHeight).Render(content)
 
-// buildSubheading constructs the subheading for the current view.
-func (m Model) buildSubheading() string {
-	if m.activeView == ViewSessions {
-		var indicators []string
-		if !m.showAll && m.localRemote != "" {
-			indicators = append(indicators, "local")
-		}
-		if m.hideRecycled {
-			indicators = append(indicators, "active")
-		}
-		if len(indicators) > 0 {
-			subStyle := lipgloss.NewStyle().Foreground(colorGray)
-			return " " + subStyle.Render("showing "+strings.Join(indicators, ", "))
-		}
-	}
-	// Empty line to maintain consistent layout
-	return ""
+	return lipgloss.JoinVertical(lipgloss.Left, tabBar, content)
 }
 
 // startRecycle returns a command that starts the recycle operation with streaming output.

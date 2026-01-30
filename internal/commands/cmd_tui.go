@@ -13,35 +13,19 @@ import (
 )
 
 type TuiCmd struct {
-	flags        *Flags
-	showAll      bool
-	hideRecycled bool
+	flags *Flags
 }
 
 // NewTuiCmd creates a new tui command
 func NewTuiCmd(flags *Flags) *TuiCmd {
 	return &TuiCmd{
-		flags:        flags,
-		hideRecycled: true,
+		flags: flags,
 	}
 }
 
 // Flags returns the TUI-specific flags for registration on the root command
 func (cmd *TuiCmd) Flags() []cli.Flag {
-	return []cli.Flag{
-		&cli.BoolFlag{
-			Name:        "all",
-			Usage:       "Show all sessions instead of only local repository sessions",
-			Value:       false,
-			Destination: &cmd.showAll,
-		},
-		&cli.BoolFlag{
-			Name:        "hide-recycled",
-			Usage:       "Hide recycled sessions (toggle with 'x' in TUI)",
-			Value:       true,
-			Destination: &cmd.hideRecycled,
-		},
-	}
+	return nil
 }
 
 // Run executes the TUI. Exported for use as default command.
@@ -50,25 +34,16 @@ func (cmd *TuiCmd) Run(ctx context.Context, c *cli.Command) error {
 }
 
 func (cmd *TuiCmd) run(ctx context.Context, _ *cli.Command) error {
-	// Detect current repository remote for filtering
-	var localRemote string
-	if !cmd.showAll {
-		remote, err := cmd.flags.Service.DetectRemote(ctx, ".")
-		if err == nil {
-			localRemote = remote
-		}
-		// If detection fails (not in a git repo), show all sessions
-	}
+	// Detect current repository remote for highlighting current repo
+	localRemote, _ := cmd.flags.Service.DetectRemote(ctx, ".")
 
 	// Create message store for pub/sub events
 	topicsDir := filepath.Join(cmd.flags.DataDir, "messages", "topics")
 	msgStore := jsonfile.NewMsgStore(topicsDir)
 
 	opts := tui.Options{
-		ShowAll:      cmd.showAll,
-		LocalRemote:  localRemote,
-		HideRecycled: cmd.hideRecycled,
-		MsgStore:     msgStore,
+		LocalRemote: localRemote,
+		MsgStore:    msgStore,
 	}
 
 	m := tui.New(cmd.flags.Service, cmd.flags.Config, opts)
