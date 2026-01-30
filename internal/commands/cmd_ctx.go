@@ -2,20 +2,14 @@ package commands
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
-	"text/tabwriter"
 	"time"
 
-	ctxpkg "github.com/hay-kot/hive/internal/core/context"
 	"github.com/hay-kot/hive/internal/core/git"
 	"github.com/hay-kot/hive/internal/printer"
-	"github.com/hay-kot/hive/internal/store/jsonfile"
 	"github.com/urfave/cli/v3"
 )
 
@@ -25,12 +19,6 @@ type CtxCmd struct {
 	// Shared flags
 	repo   string
 	shared bool
-
-	// kv list flag
-	jsonOut bool
-
-	// kv watch flag
-	timeout string
 
 	// prune flag
 	olderThan string
@@ -46,12 +34,10 @@ func (cmd *CtxCmd) Register(app *cli.Command) *cli.Command {
 	app.Commands = append(app.Commands, &cli.Command{
 		Name:  "ctx",
 		Usage: "Manage context directories for inter-agent communication",
-		Description: `Context commands manage shared directories and KV storage for agents.
+		Description: `Context commands manage shared directories for agents.
 
 Each repository gets its own context directory at $XDG_DATA_HOME/hive/context/{owner}/{repo}/.
-Use 'hive ctx init' in a git repository to create a .hive symlink pointing to this directory.
-
-The KV store provides typed key-value storage with timestamps for inter-agent communication.`,
+Use 'hive ctx init' in a git repository to create a .hive symlink pointing to this directory.`,
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:        "repo",
@@ -69,7 +55,6 @@ The KV store provides typed key-value storage with timestamps for inter-agent co
 		Commands: []*cli.Command{
 			cmd.initCmd(),
 			cmd.pruneCmd(),
-			cmd.kvCmd(),
 		},
 	})
 
@@ -104,70 +89,6 @@ Example: hive ctx prune --older-than 7d`,
 			},
 		},
 		Action: cmd.runPrune,
-	}
-}
-
-func (cmd *CtxCmd) kvCmd() *cli.Command {
-	return &cli.Command{
-		Name:        "kv",
-		Usage:       "Key-value store operations",
-		Description: "Manage key-value pairs for inter-agent communication.",
-		Commands: []*cli.Command{
-			{
-				Name:      "get",
-				Usage:     "Get a value by key",
-				UsageText: "hive ctx kv get <key>",
-				Action:    cmd.runKvGet,
-			},
-			{
-				Name:      "set",
-				Usage:     "Set a key-value pair",
-				UsageText: "hive ctx kv set <key> [value]",
-				Description: `Sets a key to a value. If value is not provided, reads from stdin.
-
-Example:
-  hive ctx kv set mykey "my value"
-  echo "piped value" | hive ctx kv set mykey`,
-				Action: cmd.runKvSet,
-			},
-			{
-				Name:      "list",
-				Usage:     "List all keys",
-				UsageText: "hive ctx kv list [prefix]",
-				Flags: []cli.Flag{
-					&cli.BoolFlag{
-						Name:        "json",
-						Usage:       "output as JSON",
-						Destination: &cmd.jsonOut,
-					},
-				},
-				Action: cmd.runKvList,
-			},
-			{
-				Name:      "delete",
-				Usage:     "Delete a key",
-				UsageText: "hive ctx kv delete <key>",
-				Action:    cmd.runKvDelete,
-			},
-			{
-				Name:      "watch",
-				Usage:     "Watch for key updates",
-				UsageText: "hive ctx kv watch <key>",
-				Description: `Blocks until the key is updated, then prints the new value.
-
-If the key doesn't exist, waits for it to be created.`,
-				Flags: []cli.Flag{
-					&cli.StringFlag{
-						Name:        "timeout",
-						Aliases:     []string{"t"},
-						Usage:       "timeout duration (e.g., 30s, 5m)",
-						Value:       "30s",
-						Destination: &cmd.timeout,
-					},
-				},
-				Action: cmd.runKvWatch,
-			},
-		},
 	}
 }
 
@@ -253,156 +174,6 @@ func (cmd *CtxCmd) runPrune(ctx context.Context, c *cli.Command) error {
 	return nil
 }
 
-func (cmd *CtxCmd) runKvGet(ctx context.Context, c *cli.Command) error {
-	if c.NArg() < 1 {
-		return fmt.Errorf("key argument required")
-	}
-	key := c.Args().Get(0)
-
-	store, err := cmd.getKVStore(ctx)
-	if err != nil {
-		return err
-	}
-
-	entry, err := store.Get(ctx, key)
-	if err != nil {
-		if errors.Is(err, ctxpkg.ErrKeyNotFound) {
-			return fmt.Errorf("key not found: %s", key)
-		}
-		return fmt.Errorf("get key: %w", err)
-	}
-
-	_, _ = fmt.Fprintln(c.Root().Writer, entry.Value)
-	return nil
-}
-
-func (cmd *CtxCmd) runKvSet(ctx context.Context, c *cli.Command) error {
-	if c.NArg() < 1 {
-		return fmt.Errorf("key argument required")
-	}
-	key := c.Args().Get(0)
-
-	var value string
-	if c.NArg() >= 2 {
-		value = c.Args().Get(1)
-	} else {
-		// Read from stdin
-		data, err := io.ReadAll(os.Stdin)
-		if err != nil {
-			return fmt.Errorf("read stdin: %w", err)
-		}
-		value = strings.TrimSuffix(string(data), "\n")
-	}
-
-	store, err := cmd.getKVStore(ctx)
-	if err != nil {
-		return err
-	}
-
-	if err := store.Set(ctx, key, value); err != nil {
-		return fmt.Errorf("set key: %w", err)
-	}
-
-	return nil
-}
-
-func (cmd *CtxCmd) runKvList(ctx context.Context, c *cli.Command) error {
-	prefix := ""
-	if c.NArg() >= 1 {
-		prefix = c.Args().Get(0)
-	}
-
-	store, err := cmd.getKVStore(ctx)
-	if err != nil {
-		return err
-	}
-
-	entries, err := store.List(ctx, prefix)
-	if err != nil {
-		return fmt.Errorf("list keys: %w", err)
-	}
-
-	if len(entries) == 0 {
-		if !cmd.jsonOut {
-			printer.Ctx(ctx).Infof("No keys found")
-		} else {
-			_, _ = fmt.Fprintln(c.Root().Writer, "[]")
-		}
-		return nil
-	}
-
-	if cmd.jsonOut {
-		enc := json.NewEncoder(c.Root().Writer)
-		enc.SetIndent("", "  ")
-		return enc.Encode(entries)
-	}
-
-	out := c.Root().Writer
-	w := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
-	_, _ = fmt.Fprintln(w, "KEY\tUPDATED")
-
-	for _, entry := range entries {
-		_, _ = fmt.Fprintf(w, "%s\t%s\n", entry.Key, entry.UpdatedAt.Format("2006-01-02 15:04:05"))
-	}
-
-	return w.Flush()
-}
-
-func (cmd *CtxCmd) runKvDelete(ctx context.Context, c *cli.Command) error {
-	if c.NArg() < 1 {
-		return fmt.Errorf("key argument required")
-	}
-	key := c.Args().Get(0)
-
-	store, err := cmd.getKVStore(ctx)
-	if err != nil {
-		return err
-	}
-
-	if err := store.Delete(ctx, key); err != nil {
-		if errors.Is(err, ctxpkg.ErrKeyNotFound) {
-			return fmt.Errorf("key not found: %s", key)
-		}
-		return fmt.Errorf("delete key: %w", err)
-	}
-
-	return nil
-}
-
-func (cmd *CtxCmd) runKvWatch(ctx context.Context, c *cli.Command) error {
-	if c.NArg() < 1 {
-		return fmt.Errorf("key argument required")
-	}
-	key := c.Args().Get(0)
-
-	timeout, err := time.ParseDuration(cmd.timeout)
-	if err != nil {
-		return fmt.Errorf("invalid timeout: %w", err)
-	}
-
-	store, err := cmd.getKVStore(ctx)
-	if err != nil {
-		return err
-	}
-
-	// Get current state to determine "after" time
-	after := time.Now()
-	if entry, err := store.Get(ctx, key); err == nil {
-		after = entry.UpdatedAt
-	}
-
-	entry, err := store.Watch(ctx, key, after, timeout)
-	if err != nil {
-		if errors.Is(err, context.DeadlineExceeded) {
-			return fmt.Errorf("timeout waiting for key update")
-		}
-		return fmt.Errorf("watch key: %w", err)
-	}
-
-	_, _ = fmt.Fprintln(c.Root().Writer, entry.Value)
-	return nil
-}
-
 func (cmd *CtxCmd) resolveContextDir(ctx context.Context) (string, error) {
 	if cmd.shared {
 		return cmd.flags.Config.SharedContextDir(), nil
@@ -428,21 +199,6 @@ func (cmd *CtxCmd) resolveContextDir(ctx context.Context) (string, error) {
 	}
 
 	return cmd.flags.Config.RepoContextDir(owner, repo), nil
-}
-
-func (cmd *CtxCmd) getKVStore(ctx context.Context) (*jsonfile.KVStore, error) {
-	ctxDir, err := cmd.resolveContextDir(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	// Ensure directory exists
-	if err := os.MkdirAll(ctxDir, 0o755); err != nil {
-		return nil, fmt.Errorf("create context directory: %w", err)
-	}
-
-	kvPath := filepath.Join(ctxDir, "kv.json")
-	return jsonfile.NewKVStore(kvPath), nil
 }
 
 func parseDuration(s string) (time.Duration, error) {
