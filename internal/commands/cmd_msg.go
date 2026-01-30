@@ -28,7 +28,6 @@ type MsgCmd struct {
 	subTimeout string
 	subLast    int
 	subListen  bool
-
 }
 
 // NewMsgCmd creates a new msg command.
