@@ -129,6 +129,17 @@ func New(service *hive.Service, cfg *config.Config, opts Options) Model {
 	l.FilterInput.Prompt = "Filter: "
 	l.Styles.FilterCursor = lipgloss.NewStyle().Foreground(colorBlue)
 
+	// Style help to match messages view (consistent gray, bullet separators, left padding)
+	helpStyle := lipgloss.NewStyle().Foreground(colorGray)
+	l.Help.Styles.ShortKey = helpStyle
+	l.Help.Styles.ShortDesc = helpStyle
+	l.Help.Styles.ShortSeparator = helpStyle
+	l.Help.Styles.FullKey = helpStyle
+	l.Help.Styles.FullDesc = helpStyle
+	l.Help.Styles.FullSeparator = helpStyle
+	l.Help.ShortSeparator = " • "
+	l.Styles.HelpStyle = lipgloss.NewStyle().PaddingLeft(1)
+
 	handler := NewKeybindingHandler(cfg.Keybindings, service)
 
 	// Add custom keybindings to list help
