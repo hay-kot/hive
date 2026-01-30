@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/viewport"
@@ -70,20 +71,10 @@ func (m *MessagePreviewModal) renderContent(width int) {
 
 	// Trim whitespace and glamour's decorative margins
 	content := strings.TrimSpace(rendered)
-	// Glamour adds a decorative rule at the start - strip it if present
-	if idx := strings.Index(content, "\n"); idx != -1 {
-		firstLine := content[:idx]
-		if strings.Trim(firstLine, "─━ \t") == "" {
-			content = strings.TrimSpace(content[idx+1:])
-		}
-	}
-	// Also strip trailing decorative rule if present
-	if idx := strings.LastIndex(content, "\n"); idx != -1 {
-		lastLine := content[idx+1:]
-		if strings.Trim(lastLine, "─━ \t") == "" {
-			content = strings.TrimSpace(content[:idx])
-		}
-	}
+	// Glamour adds a decorative rule at the start - strip lines that are only
+	// horizontal rules (accounting for ANSI escape codes)
+	content = stripLeadingDecorative(content)
+	content = stripTrailingDecorative(content)
 	m.viewport.SetContent(content)
 	m.ready = true
 }
@@ -175,3 +166,49 @@ var (
 	previewScrollStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("#565f89"))
 )
+
+// ansiPattern matches ANSI escape sequences.
+var ansiPattern = regexp.MustCompile(`\x1b\[[0-9;]*m`)
+
+// isDecorativeLine checks if a line contains only decorative characters
+// (horizontal rules, spaces) after stripping ANSI codes.
+func isDecorativeLine(line string) bool {
+	stripped := ansiPattern.ReplaceAllString(line, "")
+	stripped = strings.TrimSpace(stripped)
+	if stripped == "" {
+		return true
+	}
+	// Check if it's only horizontal rule characters
+	for _, r := range stripped {
+		if r != '─' && r != '━' && r != '-' && r != '=' {
+			return false
+		}
+	}
+	return true
+}
+
+// stripLeadingDecorative removes leading decorative lines from content.
+func stripLeadingDecorative(content string) string {
+	lines := strings.Split(content, "\n")
+	start := 0
+	for start < len(lines) && isDecorativeLine(lines[start]) {
+		start++
+	}
+	if start > 0 {
+		return strings.Join(lines[start:], "\n")
+	}
+	return content
+}
+
+// stripTrailingDecorative removes trailing decorative lines from content.
+func stripTrailingDecorative(content string) string {
+	lines := strings.Split(content, "\n")
+	end := len(lines)
+	for end > 0 && isDecorativeLine(lines[end-1]) {
+		end--
+	}
+	if end < len(lines) {
+		return strings.Join(lines[:end], "\n")
+	}
+	return content
+}
