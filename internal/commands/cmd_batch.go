@@ -65,7 +65,6 @@ func (b BatchInput) Validate() error {
 type BatchSession struct {
 	Name   string `json:"name"`
 	Remote string `json:"remote,omitempty"`
-	Prompt string `json:"prompt,omitempty"`
 	Source string `json:"source,omitempty"`
 }
 
@@ -268,7 +267,6 @@ func (cmd *BatchCmd) createSession(ctx context.Context, sess BatchSession) Batch
 	opts := hive.CreateOptions{
 		Name:   sess.Name,
 		Remote: sess.Remote,
-		Prompt: sess.Prompt,
 		Source: source,
 	}
 

@@ -16,7 +16,6 @@ type SpawnData struct {
 	Path       string // Absolute path to session directory
 	Name       string // Session name (display name)
 	Slug       string // Session slug (URL-safe version of name)
-	Prompt     string // AI prompt
 	ContextDir string // Path to context directory
 	Owner      string // Repository owner
 	Repo       string // Repository name

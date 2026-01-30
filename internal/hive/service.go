@@ -20,7 +20,6 @@ import (
 type CreateOptions struct {
 	Name   string // Session name (used in path)
 	Remote string // Git remote URL to clone (auto-detected if empty)
-	Prompt string // AI prompt to pass to spawn command
 	Source string // Source directory for file copying
 }
 
@@ -106,7 +105,6 @@ func (s *Service) CreateSession(ctx context.Context, opts CreateOptions) (*sessi
 		sess.Name = opts.Name
 		sess.Slug = slug
 		sess.Path = newPath
-		sess.Prompt = opts.Prompt
 		sess.State = session.StateActive
 		sess.UpdatedAt = time.Now()
 	} else {
@@ -130,7 +128,6 @@ func (s *Service) CreateSession(ctx context.Context, opts CreateOptions) (*sessi
 			Slug:      slug,
 			Path:      path,
 			Remote:    remote,
-			Prompt:    opts.Prompt,
 			State:     session.StateActive,
 			CreatedAt: now,
 			UpdatedAt: now,
@@ -154,7 +151,6 @@ func (s *Service) CreateSession(ctx context.Context, opts CreateOptions) (*sessi
 			Path:       sess.Path,
 			Name:       sess.Name,
 			Slug:       sess.Slug,
-			Prompt:     opts.Prompt,
 			ContextDir: s.config.RepoContextDir(owner, repoName),
 			Owner:      owner,
 			Repo:       repoName,

@@ -44,11 +44,6 @@ var (
 	pathStyle = lipgloss.NewStyle().
 			Foreground(colorGray)
 
-	// Prompt style for session prompt text.
-	promptStyle = lipgloss.NewStyle().
-			Foreground(colorGray).
-			Italic(true)
-
 	// Selected border style for left accent bar.
 	selectedBorderStyle = lipgloss.NewStyle().
 				Foreground(colorBlue)

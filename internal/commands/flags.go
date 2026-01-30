@@ -5,7 +5,6 @@ import (
 	"path/filepath"
 
 	"github.com/hay-kot/hive/internal/core/config"
-	"github.com/hay-kot/hive/internal/core/history"
 	"github.com/hay-kot/hive/internal/hive"
 )
 
@@ -20,12 +19,6 @@ type Flags struct {
 
 	// Service is the hive service for orchestrating operations
 	Service *hive.Service
-
-	// HistoryStore is the command history store
-	HistoryStore history.Store
-
-	// LastNewOptions captures parsed options from the most recent "new" command for history recording
-	LastNewOptions *history.NewOptions
 }
 
 // DefaultConfigPath returns the default config file path using XDG_CONFIG_HOME.

@@ -20,7 +20,7 @@ func TestBatchInput_Validate(t *testing.T) {
 		{
 			name: "missing name",
 			input: BatchInput{Sessions: []BatchSession{
-				{Prompt: "do something"},
+				{Remote: "https://github.com/org/repo"},
 			}},
 			wantErr: "name",
 		},
@@ -42,7 +42,7 @@ func TestBatchInput_Validate(t *testing.T) {
 		{
 			name: "valid input",
 			input: BatchInput{Sessions: []BatchSession{
-				{Name: "session1", Prompt: "prompt1"},
+				{Name: "session1"},
 				{Name: "session2", Remote: "https://github.com/org/repo"},
 			}},
 			wantErr: "",
@@ -72,8 +72,8 @@ func TestBatchInput_Validate(t *testing.T) {
 func TestBatchInput_JSON(t *testing.T) {
 	jsonInput := `{
 		"sessions": [
-			{"name": "task1", "prompt": "Do task 1"},
-			{"name": "task2", "remote": "https://github.com/org/repo", "prompt": "Do task 2"}
+			{"name": "task1"},
+			{"name": "task2", "remote": "https://github.com/org/repo"}
 		]
 	}`
 

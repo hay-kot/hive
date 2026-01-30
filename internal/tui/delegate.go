@@ -12,9 +12,6 @@ import (
 	"github.com/hay-kot/hive/pkg/kv"
 )
 
-// maxPromptDisplayLen is the maximum number of runes to display for a session prompt.
-const maxPromptDisplayLen = 60
-
 // SessionItem wraps a session for the list component.
 type SessionItem struct {
 	Session session.Session
@@ -64,7 +61,7 @@ func NewSessionDelegate() SessionDelegate {
 
 // Height returns the height of each item.
 func (d SessionDelegate) Height() int {
-	return 5
+	return 4
 }
 
 // Spacing returns the spacing between items.
@@ -137,17 +134,6 @@ func (d SessionDelegate) Render(w io.Writer, m list.Model, index int, item list.
 	// Build the description line: Path
 	path := pathStyle.Render(s.Path)
 
-	// Build prompt line (truncated with ellipsis)
-	prompt := s.Prompt
-	if prompt == "" {
-		prompt = "(no prompt)"
-	}
-	promptRunes := []rune(prompt)
-	if len(promptRunes) > maxPromptDisplayLen {
-		prompt = string(promptRunes[:maxPromptDisplayLen-3]) + "..."
-	}
-	promptLine := promptStyle.Render(prompt)
-
 	// Build git status line
 	gitLine := d.renderGitStatus(s.Path)
 
@@ -161,7 +147,6 @@ func (d SessionDelegate) Render(w io.Writer, m list.Model, index int, item list.
 
 	// Write to output with left border
 	_, _ = fmt.Fprintf(w, "%s%s\n", border, title)
-	_, _ = fmt.Fprintf(w, "%s%s\n", border, promptLine)
 	_, _ = fmt.Fprintf(w, "%s%s\n", border, path)
 	_, _ = fmt.Fprintf(w, "%s%s", border, gitLine)
 }
