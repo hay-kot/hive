@@ -216,14 +216,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 
-		// Account for banner height (4 lines + margin)
-		listHeight := msg.Height - 5
-		if listHeight < 1 {
-			listHeight = 1
+		// Account for: banner (4 lines + 1 margin) + tab bar (1) + subheading (1) = 7 lines
+		contentHeight := msg.Height - 7
+		if contentHeight < 1 {
+			contentHeight = 1
 		}
 
-		m.list.SetSize(msg.Width, listHeight)
-		m.msgView.SetSize(msg.Width, listHeight)
+		m.list.SetSize(msg.Width, contentHeight)
+		m.msgView.SetSize(msg.Width, contentHeight)
 		return m, nil
 
 	case messagesLoadedMsg:
@@ -686,11 +686,8 @@ func (m Model) renderTabView() string {
 	}
 	tabBar := lipgloss.JoinHorizontal(lipgloss.Left, " ", sessionsTab, " | ", messagesTab)
 
-	// Build subheading for sessions view (filter state)
-	var subheading string
-	if m.activeView == ViewSessions {
-		subheading = m.buildSessionsSubheading()
-	}
+	// Build subheading (always present to prevent layout shift)
+	subheading := m.buildSubheading()
 
 	// Build content
 	var content string
@@ -700,29 +697,26 @@ func (m Model) renderTabView() string {
 		content = m.msgView.View()
 	}
 
-	if subheading != "" {
-		return lipgloss.JoinVertical(lipgloss.Left, tabBar, subheading, content)
-	}
-	return lipgloss.JoinVertical(lipgloss.Left, tabBar, content)
+	return lipgloss.JoinVertical(lipgloss.Left, tabBar, subheading, content)
 }
 
-// buildSessionsSubheading constructs the sessions filter state subheading.
-func (m Model) buildSessionsSubheading() string {
-	var indicators []string
-
-	if !m.showAll && m.localRemote != "" {
-		indicators = append(indicators, "local")
+// buildSubheading constructs the subheading for the current view.
+func (m Model) buildSubheading() string {
+	if m.activeView == ViewSessions {
+		var indicators []string
+		if !m.showAll && m.localRemote != "" {
+			indicators = append(indicators, "local")
+		}
+		if m.hideRecycled {
+			indicators = append(indicators, "active")
+		}
+		if len(indicators) > 0 {
+			subStyle := lipgloss.NewStyle().Foreground(colorGray)
+			return " " + subStyle.Render("showing "+strings.Join(indicators, ", "))
+		}
 	}
-	if m.hideRecycled {
-		indicators = append(indicators, "active")
-	}
-
-	if len(indicators) == 0 {
-		return ""
-	}
-
-	subStyle := lipgloss.NewStyle().Foreground(colorGray)
-	return " " + subStyle.Render("showing "+strings.Join(indicators, ", "))
+	// Empty line to maintain consistent layout
+	return ""
 }
 
 // startRecycle returns a command that starts the recycle operation with streaming output.
