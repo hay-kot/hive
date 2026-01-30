@@ -68,8 +68,23 @@ func (m *MessagePreviewModal) renderContent(width int) {
 		return
 	}
 
-	// Trim trailing whitespace that glamour adds
-	m.viewport.SetContent(strings.TrimRight(rendered, "\n"))
+	// Trim whitespace and glamour's decorative margins
+	content := strings.TrimSpace(rendered)
+	// Glamour adds a decorative rule at the start - strip it if present
+	if idx := strings.Index(content, "\n"); idx != -1 {
+		firstLine := content[:idx]
+		if strings.Trim(firstLine, "─━ \t") == "" {
+			content = strings.TrimSpace(content[idx+1:])
+		}
+	}
+	// Also strip trailing decorative rule if present
+	if idx := strings.LastIndex(content, "\n"); idx != -1 {
+		lastLine := content[idx+1:]
+		if strings.Trim(lastLine, "─━ \t") == "" {
+			content = strings.TrimSpace(content[:idx])
+		}
+	}
+	m.viewport.SetContent(content)
 	m.ready = true
 }
 
