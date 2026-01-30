@@ -744,17 +744,17 @@ func (m Model) renderSplitView() string {
 		listHeight = 1
 	}
 
-	// Build focus indicators with background tint for active pane
-	var leftHeader, rightHeader string
+	// Build focus indicators
+	var leftIndicator, rightIndicator string
 	if m.focusedPane == PaneSessions {
-		leftHeader = focusedHeaderStyle.Render(focusIndicatorStyle.Render("▸ ") + viewSelectedStyle.Render("Sessions"))
-		rightHeader = unfocusedHeaderStyle.Render("  " + viewNormalStyle.Render("Message Bus"))
+		leftIndicator = focusIndicatorStyle.Render("▸ ") + viewSelectedStyle.Render("Sessions")
+		rightIndicator = "  " + viewNormalStyle.Render("Message Bus")
 	} else {
-		leftHeader = unfocusedHeaderStyle.Render("  " + viewNormalStyle.Render("Sessions"))
-		rightHeader = focusedHeaderStyle.Render(focusIndicatorStyle.Render("▸ ") + viewSelectedStyle.Render("Message Bus"))
+		leftIndicator = "  " + viewNormalStyle.Render("Sessions")
+		rightIndicator = focusIndicatorStyle.Render("▸ ") + viewSelectedStyle.Render("Message Bus")
 	}
-	leftIndicator := lipgloss.NewStyle().Width(paneWidth).Render(leftHeader)
-	rightIndicator := lipgloss.NewStyle().Width(paneWidth).Render(rightHeader)
+	leftIndicator = lipgloss.NewStyle().Width(paneWidth).Render(leftIndicator)
+	rightIndicator = lipgloss.NewStyle().Width(paneWidth).Render(rightIndicator)
 
 	// Build divider (vertical line)
 	divider := m.renderDivider(listHeight)

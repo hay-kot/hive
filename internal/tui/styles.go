@@ -148,13 +148,4 @@ var (
 	focusIndicatorStyle = lipgloss.NewStyle().
 				Foreground(colorBlue).
 				Bold(true)
-
-	// Focused header style - background tint for prominent focus indication.
-	focusedHeaderStyle = lipgloss.NewStyle().
-				Background(lipgloss.Color("#1e3a5f")).
-				Padding(0, 1)
-
-	// Unfocused header style - no background, subtle appearance.
-	unfocusedHeaderStyle = lipgloss.NewStyle().
-				Padding(0, 1)
 )
