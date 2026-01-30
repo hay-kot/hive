@@ -272,6 +272,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Update delegate focus states for split mode
 			m.sessionDelegate.Focused = m.focusedPane == PaneSessions
 			m.msgDelegate.Focused = m.focusedPane == PaneMessages
+			m.list.SetDelegate(*m.sessionDelegate)
+			m.msgList.SetDelegate(*m.msgDelegate)
 		} else {
 			// Full width for active view, show titles
 			m.list.SetShowTitle(true)
@@ -281,6 +283,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Update delegate focus states for tab mode
 			m.sessionDelegate.Focused = m.activeView == ViewSessions
 			m.msgDelegate.Focused = m.activeView == ViewMessages
+			m.list.SetDelegate(*m.sessionDelegate)
+			m.msgList.SetDelegate(*m.msgDelegate)
 		}
 		return m, nil
 
@@ -550,9 +554,11 @@ func (m Model) handleTabKey() (tea.Model, tea.Cmd) {
 		} else {
 			m.focusedPane = PaneSessions
 		}
-		// Update delegate focus states
+		// Update delegate focus states and re-set on lists
 		m.sessionDelegate.Focused = m.focusedPane == PaneSessions
 		m.msgDelegate.Focused = m.focusedPane == PaneMessages
+		m.list.SetDelegate(*m.sessionDelegate)
+		m.msgList.SetDelegate(*m.msgDelegate)
 	} else {
 		if m.activeView == ViewSessions {
 			m.activeView = ViewMessages
@@ -562,6 +568,8 @@ func (m Model) handleTabKey() (tea.Model, tea.Cmd) {
 		// Update delegate focus states for tab mode
 		m.sessionDelegate.Focused = m.activeView == ViewSessions
 		m.msgDelegate.Focused = m.activeView == ViewMessages
+		m.list.SetDelegate(*m.sessionDelegate)
+		m.msgList.SetDelegate(*m.msgDelegate)
 	}
 	return m, nil
 }
