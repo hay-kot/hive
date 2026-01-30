@@ -118,7 +118,7 @@ type recycleCompleteMsg struct {
 func New(service *hive.Service, cfg *config.Config, opts Options) Model {
 	gitStatuses := kv.New[string, GitStatus]()
 
-	delegate := NewSessionDelegate()
+	delegate := NewTreeDelegate()
 	delegate.GitStatuses = gitStatuses
 
 	l := list.New([]list.Item{}, delegate, 0, 0)
@@ -580,11 +580,14 @@ func (m Model) selectedSession() *session.Session {
 	if item == nil {
 		return nil
 	}
-	sessionItem, ok := item.(SessionItem)
-	if !ok {
-		return nil
+	// Handle TreeItem (tree view mode)
+	if treeItem, ok := item.(TreeItem); ok {
+		if treeItem.IsHeader {
+			return nil // Headers aren't sessions
+		}
+		return &treeItem.Session
 	}
-	return &sessionItem.Session
+	return nil
 }
 
 // selectedMessage returns the currently selected message, or nil if none.
@@ -622,13 +625,17 @@ func (m Model) applyFilter() (tea.Model, tea.Cmd) {
 		filtered = append(filtered, s)
 	}
 
-	items := make([]list.Item, len(filtered))
-	paths := make([]string, len(filtered))
-	for i, s := range filtered {
-		items[i] = SessionItem{Session: s}
-		paths[i] = s.Path
+	// Group sessions by repository and build tree items
+	groups := GroupSessionsByRepo(filtered, m.localRemote)
+	items := BuildTreeItems(groups, m.localRemote)
+
+	// Collect paths for git status fetching
+	paths := make([]string, 0, len(filtered))
+	for _, s := range filtered {
+		paths = append(paths, s.Path)
 		m.gitStatuses.Set(s.Path, GitStatus{IsLoading: true})
 	}
+
 	m.list.SetItems(items)
 	m.state = stateNormal
 
@@ -644,11 +651,11 @@ func (m Model) refreshGitStatuses() tea.Cmd {
 	paths := make([]string, 0, len(items))
 
 	for _, item := range items {
-		sessionItem, ok := item.(SessionItem)
-		if !ok {
+		treeItem, ok := item.(TreeItem)
+		if !ok || treeItem.IsHeader {
 			continue
 		}
-		path := sessionItem.Session.Path
+		path := treeItem.Session.Path
 		paths = append(paths, path)
 		// Mark as loading
 		m.gitStatuses.Set(path, GitStatus{IsLoading: true})
