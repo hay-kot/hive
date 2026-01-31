@@ -92,9 +92,9 @@ func TestEnforceMaxRecycled(t *testing.T) {
 	t.Run("unlimited (0) does nothing", func(t *testing.T) {
 		store := newMockStore()
 		cfg := &config.Config{
-			DataDir:     t.TempDir(),
-			GitPath:     "git",
-			MaxRecycled: intPtr(0),
+			DataDir: t.TempDir(),
+			GitPath: "git",
+			Rules:   []config.Rule{{Pattern: "", MaxRecycled: intPtr(0)}},
 		}
 		svc := newTestService(t, store, cfg)
 
@@ -122,9 +122,9 @@ func TestEnforceMaxRecycled(t *testing.T) {
 	t.Run("deletes oldest beyond limit", func(t *testing.T) {
 		store := newMockStore()
 		cfg := &config.Config{
-			DataDir:     t.TempDir(),
-			GitPath:     "git",
-			MaxRecycled: intPtr(3),
+			DataDir: t.TempDir(),
+			GitPath: "git",
+			Rules:   []config.Rule{{Pattern: "", MaxRecycled: intPtr(3)}},
 		}
 		svc := newTestService(t, store, cfg)
 
@@ -159,9 +159,9 @@ func TestEnforceMaxRecycled(t *testing.T) {
 	t.Run("only affects matching remote", func(t *testing.T) {
 		store := newMockStore()
 		cfg := &config.Config{
-			DataDir:     t.TempDir(),
-			GitPath:     "git",
-			MaxRecycled: intPtr(1),
+			DataDir: t.TempDir(),
+			GitPath: "git",
+			Rules:   []config.Rule{{Pattern: "", MaxRecycled: intPtr(1)}},
 		}
 		svc := newTestService(t, store, cfg)
 
@@ -209,9 +209,9 @@ func TestPrune(t *testing.T) {
 	t.Run("all=true deletes all recycled", func(t *testing.T) {
 		store := newMockStore()
 		cfg := &config.Config{
-			DataDir:     t.TempDir(),
-			GitPath:     "git",
-			MaxRecycled: intPtr(10), // high limit shouldn't matter with all=true
+			DataDir: t.TempDir(),
+			GitPath: "git",
+			Rules:   []config.Rule{{Pattern: "", MaxRecycled: intPtr(10)}}, // high limit shouldn't matter with all=true
 		}
 		svc := newTestService(t, store, cfg)
 
@@ -247,9 +247,9 @@ func TestPrune(t *testing.T) {
 	t.Run("all=false respects max_recycled", func(t *testing.T) {
 		store := newMockStore()
 		cfg := &config.Config{
-			DataDir:     t.TempDir(),
-			GitPath:     "git",
-			MaxRecycled: intPtr(2),
+			DataDir: t.TempDir(),
+			GitPath: "git",
+			Rules:   []config.Rule{{Pattern: "", MaxRecycled: intPtr(2)}},
 		}
 		svc := newTestService(t, store, cfg)
 
@@ -279,9 +279,9 @@ func TestPrune(t *testing.T) {
 	t.Run("always deletes corrupted", func(t *testing.T) {
 		store := newMockStore()
 		cfg := &config.Config{
-			DataDir:     t.TempDir(),
-			GitPath:     "git",
-			MaxRecycled: intPtr(10), // high limit
+			DataDir: t.TempDir(),
+			GitPath: "git",
+			Rules:   []config.Rule{{Pattern: "", MaxRecycled: intPtr(10)}}, // high limit
 		}
 		svc := newTestService(t, store, cfg)
 
@@ -310,11 +310,11 @@ func TestPrune(t *testing.T) {
 	t.Run("per-rule max_recycled", func(t *testing.T) {
 		store := newMockStore()
 		cfg := &config.Config{
-			DataDir:     t.TempDir(),
-			GitPath:     "git",
-			MaxRecycled: intPtr(5),
+			DataDir: t.TempDir(),
+			GitPath: "git",
 			Rules: []config.Rule{
-				{Pattern: "github.com/strict/.*", MaxRecycled: intPtr(1)},
+				{Pattern: "", MaxRecycled: intPtr(5)},                     // catch-all default
+				{Pattern: "github.com/strict/.*", MaxRecycled: intPtr(1)}, // strict override
 			},
 		}
 		svc := newTestService(t, store, cfg)

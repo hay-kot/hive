@@ -50,9 +50,8 @@ type Config struct {
 	History             HistoryConfig         `yaml:"history"`
 	Context             ContextConfig         `yaml:"context"`
 	TUI                 TUIConfig             `yaml:"tui"`
-	RepoDirs            []string              `yaml:"repo_dirs"`    // directories containing git repositories for new session dialog
-	MaxRecycled         *int                  `yaml:"max_recycled"` // global default for max recycled sessions per repo (nil = 5)
-	DataDir             string                `yaml:"-"`            // set by caller, not from config file
+	RepoDirs            []string              `yaml:"repo_dirs"` // directories containing git repositories for new session dialog
+	DataDir             string                `yaml:"-"`         // set by caller, not from config file
 }
 
 // HistoryConfig holds command history configuration.
@@ -83,8 +82,8 @@ type Rule struct {
 	Commands []string `yaml:"commands,omitempty"`
 	// Copy are glob patterns to copy from source directory.
 	Copy []string `yaml:"copy,omitempty"`
-	// MaxRecycled overrides the global max recycled sessions for matching repos.
-	// nil = inherit from global, 0 = unlimited, >0 = limit
+	// MaxRecycled sets the max recycled sessions for matching repos.
+	// nil = inherit from previous rule or default (5), 0 = unlimited, >0 = limit
 	MaxRecycled *int `yaml:"max_recycled,omitempty"`
 }
 
@@ -227,12 +226,6 @@ func (c *Config) Validate() error {
 func (c *Config) validateMaxRecycled() error {
 	var errs criterio.FieldErrorsBuilder
 
-	// Validate global max_recycled
-	if c.MaxRecycled != nil && *c.MaxRecycled < 0 {
-		errs = errs.Append("max_recycled", fmt.Errorf("must be >= 0, got %d", *c.MaxRecycled))
-	}
-
-	// Validate per-rule max_recycled
 	for i, rule := range c.Rules {
 		if rule.MaxRecycled != nil && *rule.MaxRecycled < 0 {
 			errs = errs.Append(fmt.Sprintf("rules[%d].max_recycled", i), fmt.Errorf("must be >= 0, got %d", *rule.MaxRecycled))
@@ -325,17 +318,10 @@ func (c *Config) GetMaxRecycled(remote string) int {
 		}
 	}
 
-	// If a rule set it, use that value
 	if result != nil {
 		return *result
 	}
 
-	// Fall back to global config
-	if c.MaxRecycled != nil {
-		return *c.MaxRecycled
-	}
-
-	// Default
 	return DefaultMaxRecycled
 }
 

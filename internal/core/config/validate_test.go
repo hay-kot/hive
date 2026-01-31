@@ -295,63 +295,63 @@ func TestGetMaxRecycled(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		global   *int
 		rules    []Rule
 		remote   string
 		expected int
 	}{
 		{
-			name:     "default when no config",
-			global:   nil,
+			name:     "default when no rules",
 			rules:    nil,
 			remote:   "https://github.com/foo/bar",
 			expected: DefaultMaxRecycled,
 		},
 		{
-			name:     "global override",
-			global:   intPtr(10),
-			rules:    nil,
+			name: "catch-all rule sets default",
+			rules: []Rule{
+				{Pattern: "", MaxRecycled: intPtr(10)},
+			},
 			remote:   "https://github.com/foo/bar",
 			expected: 10,
 		},
 		{
-			name:     "global unlimited (0)",
-			global:   intPtr(0),
-			rules:    nil,
+			name: "catch-all unlimited (0)",
+			rules: []Rule{
+				{Pattern: "", MaxRecycled: intPtr(0)},
+			},
 			remote:   "https://github.com/foo/bar",
 			expected: 0,
 		},
 		{
-			name:   "rule override",
-			global: intPtr(10),
+			name: "specific rule override",
 			rules: []Rule{
+				{Pattern: "", MaxRecycled: intPtr(10)},
 				{Pattern: "github.com/foo/.*", MaxRecycled: intPtr(2)},
 			},
 			remote:   "https://github.com/foo/bar",
 			expected: 2,
 		},
 		{
-			name:   "rule unlimited override",
-			global: intPtr(10),
+			name: "specific rule unlimited override",
 			rules: []Rule{
+				{Pattern: "", MaxRecycled: intPtr(10)},
 				{Pattern: "github.com/foo/.*", MaxRecycled: intPtr(0)},
 			},
 			remote:   "https://github.com/foo/bar",
 			expected: 0,
 		},
 		{
-			name:   "non-matching rule falls back to global",
-			global: intPtr(10),
+			name: "non-matching rule falls back to catch-all",
 			rules: []Rule{
+				{Pattern: "", MaxRecycled: intPtr(10)},
 				{Pattern: "github.com/other/.*", MaxRecycled: intPtr(2)},
 			},
 			remote:   "https://github.com/foo/bar",
 			expected: 10,
 		},
 		{
-			name:   "last matching rule wins",
-			global: intPtr(10),
+			name: "last matching rule wins",
 			rules: []Rule{
+				{Pattern: "", MaxRecycled: intPtr(10)},
 				{Pattern: "github.com/.*", MaxRecycled: intPtr(5)},
 				{Pattern: "github.com/foo/.*", MaxRecycled: intPtr(2)},
 			},
@@ -359,17 +359,16 @@ func TestGetMaxRecycled(t *testing.T) {
 			expected: 2,
 		},
 		{
-			name:   "rule without max_recycled inherits",
-			global: intPtr(10),
+			name: "rule without max_recycled inherits from previous",
 			rules: []Rule{
+				{Pattern: "", MaxRecycled: intPtr(10)},
 				{Pattern: "github.com/foo/.*", Commands: []string{"echo test"}},
 			},
 			remote:   "https://github.com/foo/bar",
 			expected: 10,
 		},
 		{
-			name:   "later rule with max_recycled overrides earlier without",
-			global: intPtr(10),
+			name: "later rule with max_recycled overrides earlier without",
 			rules: []Rule{
 				{Pattern: "github.com/foo/.*", MaxRecycled: intPtr(3)},
 				{Pattern: "github.com/foo/bar", Commands: []string{"echo"}}, // no MaxRecycled
@@ -377,12 +376,19 @@ func TestGetMaxRecycled(t *testing.T) {
 			remote:   "https://github.com/foo/bar",
 			expected: 3, // inherits from earlier matching rule with MaxRecycled
 		},
+		{
+			name: "no matching rules uses default",
+			rules: []Rule{
+				{Pattern: "github.com/other/.*", MaxRecycled: intPtr(2)},
+			},
+			remote:   "https://github.com/foo/bar",
+			expected: DefaultMaxRecycled,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := validConfig(t)
-			cfg.MaxRecycled = tt.global
 			cfg.Rules = tt.rules
 
 			result := cfg.GetMaxRecycled(tt.remote)
@@ -393,15 +399,6 @@ func TestGetMaxRecycled(t *testing.T) {
 
 func TestValidate_MaxRecycledNegative(t *testing.T) {
 	intPtr := func(n int) *int { return &n }
-
-	t.Run("negative global", func(t *testing.T) {
-		cfg := validConfig(t)
-		cfg.MaxRecycled = intPtr(-1)
-
-		err := cfg.Validate()
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "max_recycled")
-	})
 
 	t.Run("negative in rule", func(t *testing.T) {
 		cfg := validConfig(t)
@@ -416,8 +413,8 @@ func TestValidate_MaxRecycledNegative(t *testing.T) {
 
 	t.Run("valid values pass", func(t *testing.T) {
 		cfg := validConfig(t)
-		cfg.MaxRecycled = intPtr(0) // 0 is valid (unlimited)
 		cfg.Rules = []Rule{
+			{Pattern: "", MaxRecycled: intPtr(0)}, // 0 is valid (unlimited)
 			{Pattern: ".*", MaxRecycled: intPtr(5)},
 		}
 

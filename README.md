@@ -145,15 +145,15 @@ commands:
 # Git executable (optional, defaults to "git")
 git_path: git
 
-# Maximum recycled sessions to keep per repository (default: 5)
-# Oldest sessions beyond this limit are automatically deleted when recycling
-# Set to 0 for unlimited
-max_recycled: 5
-
 # Rules for repository-specific setup
-# Each rule can have commands (hooks), copy patterns, and max_recycled override
-# Pattern uses regex syntax matched against the remote URL
+# Each rule can have commands (hooks), copy patterns, and max_recycled
+# Pattern uses regex syntax matched against the remote URL (empty = catch-all)
+# Rules are processed in order; last matching rule with max_recycled set wins
 rules:
+  # Catch-all rule sets the default max_recycled (code default is 5 if not set)
+  - pattern: ""
+    max_recycled: 5
+
   - pattern: ".*/my-org/.*"
     commands:
       - npm install
@@ -161,12 +161,15 @@ rules:
     copy:
       - .envrc
       - configs/*.yaml
+
   - pattern: ".*/hay-kot/.*"
     commands:
       - go mod download
+
   # Override max_recycled for large repos (keep fewer sessions)
   - pattern: ".*/my-org/large-repo"
     max_recycled: 2
+
   # Unlimited recycled sessions for specific repos
   - pattern: ".*/my-org/special-repo"
     max_recycled: 0
@@ -206,40 +209,41 @@ keybindings:
 
 ### Configuration Options
 
-| Option                 | Type                    | Default                                                 | Description                                                        |
-| ---------------------- | ----------------------- | ------------------------------------------------------- | ------------------------------------------------------------------ |
-| `commands.spawn`       | `[]string`              | `[]`                                                    | Commands to run after session creation (Go templates supported)    |
-| `commands.recycle`     | `[]string`              | `["git reset --hard", "git checkout main", "git pull"]` | Commands to run when recycling a session                           |
-| `git_path`             | `string`                | `git`                                                   | Path to git executable                                             |
-| `max_recycled`         | `int`                   | `5`                                                     | Max recycled sessions per repo (0 = unlimited)                     |
-| `rules`                | `[]Rule`                | `[]`                                                    | Repository-specific setup rules                                    |
-| `keybindings`          | `map[string]Keybinding` | see below                                               | TUI keybinding configuration                                       |
-| `tui.refresh_interval` | `duration`              | `15s`                                                   | Auto-refresh interval for sessions view (0 to disable)             |
+| Option                 | Type                    | Default                                                 | Description                                                     |
+| ---------------------- | ----------------------- | ------------------------------------------------------- | --------------------------------------------------------------- |
+| `commands.spawn`       | `[]string`              | `[]`                                                    | Commands to run after session creation (Go templates supported) |
+| `commands.recycle`     | `[]string`              | `["git reset --hard", "git checkout main", "git pull"]` | Commands to run when recycling a session                        |
+| `git_path`             | `string`                | `git`                                                   | Path to git executable                                          |
+| `rules`                | `[]Rule`                | `[]`                                                    | Repository-specific setup rules                                 |
+| `keybindings`          | `map[string]Keybinding` | see below                                               | TUI keybinding configuration                                    |
+| `tui.refresh_interval` | `duration`              | `15s`                                                   | Auto-refresh interval for sessions view (0 to disable)          |
 
 ### Rules
 
 Rules run after cloning or recycling a session. Each rule has:
 
-- `pattern`: Regex pattern matched against the remote URL (empty matches all)
+- `pattern`: Regex pattern matched against the remote URL (empty = catch-all)
 - `commands`: Shell commands to execute in the session directory
 - `copy`: Glob patterns for files to copy from the source directory
-- `max_recycled`: Override the global max_recycled limit for matching repos
+- `max_recycled`: Max recycled sessions for matching repos (0 = unlimited)
 
 ### Max Recycled Sessions
 
-The `max_recycled` setting controls how many recycled sessions to keep per repository. When a session is recycled and the limit is exceeded, the oldest recycled sessions are automatically deleted.
+The `max_recycled` rule setting controls how many recycled sessions to keep per repository. When a session is recycled and the limit is exceeded, the oldest recycled sessions are automatically deleted.
 
-**Precedence:**
-1. Last matching rule with `max_recycled` set wins
-2. Falls back to global `max_recycled` if no rule matches or sets it
-3. Unset value inherits from parent; at global level defaults to 5
-4. `0` means unlimited (no automatic deletion)
+**Behavior:**
+- Rules are processed in order; last matching rule with `max_recycled` set wins
+- Use an empty pattern (`""`) as a catch-all to set the default
+- If no rule sets `max_recycled`, the code default is 5
+- `0` means unlimited (no automatic deletion)
 
 **Example:**
 ```yaml
-max_recycled: 5  # Global default: keep 5 recycled sessions per repo
-
 rules:
+  # Catch-all sets the default for all repos
+  - pattern: ""
+    max_recycled: 5
+
   # Large repos: keep fewer sessions
   - pattern: "github.com/my-org/large-repo"
     max_recycled: 2
