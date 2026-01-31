@@ -55,4 +55,3 @@ func (r *Recycler) Recycle(ctx context.Context, path string, commands []string, 
 	r.log.Debug().Msg("recycle complete")
 	return nil
 }
-
