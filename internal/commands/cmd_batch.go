@@ -41,7 +41,8 @@ func (b BatchInput) Validate() error {
 	}
 
 	var errs criterio.FieldErrorsBuilder
-	seen := make(map[string]bool)
+	seenNames := make(map[string]bool)
+	seenIDs := make(map[string]bool)
 
 	for i, sess := range b.Sessions {
 		field := fmt.Sprintf("sessions[%d]", i)
@@ -51,11 +52,24 @@ func (b BatchInput) Validate() error {
 			continue
 		}
 
-		if seen[sess.Name] {
+		if seenNames[sess.Name] {
 			errs = errs.Append(field+".name", fmt.Errorf("duplicate name %q", sess.Name))
 			continue
 		}
-		seen[sess.Name] = true
+		seenNames[sess.Name] = true
+
+		// Validate session_id if provided
+		if sess.SessionID != "" {
+			if err := validate.SessionID(sess.SessionID); err != nil {
+				errs = errs.Append(field+".session_id", err)
+				continue
+			}
+			if seenIDs[sess.SessionID] {
+				errs = errs.Append(field+".session_id", fmt.Errorf("duplicate session_id %q", sess.SessionID))
+				continue
+			}
+			seenIDs[sess.SessionID] = true
+		}
 	}
 
 	return errs.ToError()
@@ -63,10 +77,11 @@ func (b BatchInput) Validate() error {
 
 // BatchSession defines a single session to create.
 type BatchSession struct {
-	Name   string `json:"name"`
-	Prompt string `json:"prompt,omitempty"`
-	Remote string `json:"remote,omitempty"`
-	Source string `json:"source,omitempty"`
+	Name      string `json:"name"`
+	SessionID string `json:"session_id,omitempty"`
+	Prompt    string `json:"prompt,omitempty"`
+	Remote    string `json:"remote,omitempty"`
+	Source    string `json:"source,omitempty"`
 }
 
 // BatchResult is the output for a single session creation attempt.
@@ -123,6 +138,7 @@ Input JSON schema:
     "sessions": [
       {
         "name": "session-name",
+        "session_id": "optional-id",
         "prompt": "optional task prompt",
         "remote": "optional-url",
         "source": "optional-path"
@@ -131,10 +147,11 @@ Input JSON schema:
   }
 
 Fields:
-  name    - Required. Session name (used in path).
-  prompt  - Optional. Task prompt passed to batch_spawn via {{.Prompt}} template.
-  remote  - Optional. Git remote URL (auto-detected from current dir if empty).
-  source  - Optional. Directory to copy files from (per copy rules in config).
+  name       - Required. Session name (used in path).
+  session_id - Optional. Session ID (lowercase alphanumeric, auto-generated if empty).
+  prompt     - Optional. Task prompt passed to batch_spawn via {{.Prompt}} template.
+  remote     - Optional. Git remote URL (auto-detected from current dir if empty).
+  source     - Optional. Directory to copy files from (per copy rules in config).
 
 Config example (in ~/.config/hive/config.yaml):
   commands:
@@ -284,6 +301,7 @@ func (cmd *BatchCmd) createSession(ctx context.Context, sess BatchSession) Batch
 
 	opts := hive.CreateOptions{
 		Name:          sess.Name,
+		SessionID:     sess.SessionID,
 		Prompt:        sess.Prompt,
 		Remote:        sess.Remote,
 		Source:        source,

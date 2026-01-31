@@ -26,9 +26,11 @@ func (cmd *DocCmd) Register(app *cli.Command) *cli.Command {
 		Usage: "Documentation and migration guides",
 		Description: `Access documentation and migration guides for hive.
 
-Use 'hive doc migrate' to see configuration migration information.`,
+Use 'hive doc migrate' to see configuration migration information.
+Use 'hive doc messaging' to see inter-agent messaging conventions.`,
 		Commands: []*cli.Command{
 			cmd.migrateCmd(),
+			cmd.messagingCmd(),
 		},
 	})
 	return app
@@ -58,6 +60,109 @@ func (cmd *DocCmd) runMigrate(_ context.Context, c *cli.Command) error {
 	configVersion := cmd.flags.Config.Version
 	printMigrationGuide(w, configVersion, cmd.all)
 	return nil
+}
+
+func (cmd *DocCmd) messagingCmd() *cli.Command {
+	return &cli.Command{
+		Name:  "messaging",
+		Usage: "Show inter-agent messaging conventions for LLMs",
+		Description: `Outputs documentation for LLMs on hive messaging conventions.
+
+This guide explains how AI agents can communicate with each other
+using hive's messaging system.`,
+		Action: cmd.runMessaging,
+	}
+}
+
+func (cmd *DocCmd) runMessaging(_ context.Context, c *cli.Command) error {
+	w := c.Root().Writer
+	printMessagingGuide(w)
+	return nil
+}
+
+func printMessagingGuide(w io.Writer) {
+	guide := `# Hive Inter-Agent Messaging Guide
+
+## Identity
+
+Your session ID is available via:
+` + "```bash" + `
+hive session info
+` + "```" + `
+
+Your inbox topic follows the convention: ` + "`agent.{session-id}.inbox`" + `
+
+## Checking Your Inbox
+
+Read unread messages only (since last check):
+` + "```bash" + `
+hive msg sub -t agent.{id}.inbox --new
+` + "```" + `
+
+Read all messages:
+` + "```bash" + `
+hive msg sub -t agent.{id}.inbox
+` + "```" + `
+
+## Sending to Another Agent
+
+First, discover active agents:
+` + "```bash" + `
+hive ls --json
+` + "```" + `
+
+Then send to their inbox:
+` + "```bash" + `
+hive msg pub -t agent.{their-id}.inbox "your message"
+` + "```" + `
+
+## Messaging Conventions
+
+- **Check inbox on startup** for handoffs from other agents
+- **Use inbox for direct communication** between specific agents
+- **Use custom topics for broadcast** patterns (e.g., "build.status", "test.results")
+- **Include context** in messages: what you're working on, what you need
+- **Include your session ID** for reply routing
+
+## Message Format Suggestions
+
+**For structured data:** JSON
+` + "```json" + `
+{"from": "abc123", "type": "handoff", "task": "review PR #42", "context": "..."}
+` + "```" + `
+
+**For human-readable handoffs:** Markdown
+` + "```markdown" + `
+## Handoff from abc123
+
+I completed the authentication refactor. Tests are passing.
+
+### Remaining work:
+- Update the README
+- Add integration tests
+` + "```" + `
+
+## Topic Naming Conventions
+
+| Pattern | Use Case |
+|---------|----------|
+| ` + "`agent.{id}.inbox`" + ` | Direct messages to a specific agent |
+| ` + "`build.{repo}`" + ` | Build status updates |
+| ` + "`test.results`" + ` | Test run notifications |
+| ` + "`deploy.{env}`" + ` | Deployment events |
+
+## Quick Reference
+
+| Command | Description |
+|---------|-------------|
+| ` + "`hive session info`" + ` | Get your session ID |
+| ` + "`hive ls --json`" + ` | List agents with inbox info |
+| ` + "`hive msg sub -t TOPIC`" + ` | Subscribe to a topic |
+| ` + "`hive msg sub -t TOPIC --new`" + ` | Subscribe to unread only |
+| ` + "`hive msg pub -t TOPIC MSG`" + ` | Publish a message |
+| ` + "`hive msg topic --new`" + ` | Generate a new topic ID |
+`
+	_, _ = fmt.Fprintln(w, guide)
 }
 
 // Migration represents a breaking change that requires user action.

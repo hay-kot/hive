@@ -20,6 +20,7 @@ import (
 // CreateOptions configures session creation.
 type CreateOptions struct {
 	Name          string // Session name (used in path)
+	SessionID     string // Session ID (auto-generated if empty)
 	Prompt        string // Prompt to pass to spawned terminal (batch only)
 	Remote        string // Git remote URL to clone (auto-detected if empty)
 	Source        string // Source directory for file copying
@@ -112,7 +113,10 @@ func (s *Service) CreateSession(ctx context.Context, opts CreateOptions) (*sessi
 		sess.UpdatedAt = time.Now()
 	} else {
 		// Create new session (either no recyclable found or it was corrupted)
-		id := generateID()
+		id := opts.SessionID
+		if id == "" {
+			id = generateID()
+		}
 		repoName := git.ExtractRepoName(remote)
 		path := filepath.Join(s.config.ReposDir(), fmt.Sprintf("%s-%s-%s", repoName, slug, id))
 

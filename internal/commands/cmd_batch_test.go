@@ -40,10 +40,47 @@ func TestBatchInput_Validate(t *testing.T) {
 			wantErr: "duplicate",
 		},
 		{
+			name: "invalid session_id uppercase",
+			input: BatchInput{Sessions: []BatchSession{
+				{Name: "test", SessionID: "ABC123"},
+			}},
+			wantErr: "session_id",
+		},
+		{
+			name: "invalid session_id with hyphen",
+			input: BatchInput{Sessions: []BatchSession{
+				{Name: "test", SessionID: "abc-123"},
+			}},
+			wantErr: "session_id",
+		},
+		{
+			name: "invalid session_id with space",
+			input: BatchInput{Sessions: []BatchSession{
+				{Name: "test", SessionID: "abc 123"},
+			}},
+			wantErr: "session_id",
+		},
+		{
+			name: "duplicate session_id",
+			input: BatchInput{Sessions: []BatchSession{
+				{Name: "test1", SessionID: "abc123"},
+				{Name: "test2", SessionID: "abc123"},
+			}},
+			wantErr: "duplicate session_id",
+		},
+		{
 			name: "valid input",
 			input: BatchInput{Sessions: []BatchSession{
 				{Name: "session1"},
 				{Name: "session2", Remote: "https://github.com/org/repo"},
+			}},
+			wantErr: "",
+		},
+		{
+			name: "valid input with session_id",
+			input: BatchInput{Sessions: []BatchSession{
+				{Name: "session1", SessionID: "abc123"},
+				{Name: "session2", SessionID: "def456"},
 			}},
 			wantErr: "",
 		},
@@ -72,7 +109,7 @@ func TestBatchInput_Validate(t *testing.T) {
 func TestBatchInput_JSON(t *testing.T) {
 	jsonInput := `{
 		"sessions": [
-			{"name": "task1"},
+			{"name": "task1", "session_id": "abc123"},
 			{"name": "task2", "remote": "https://github.com/org/repo"}
 		]
 	}`
@@ -88,6 +125,10 @@ func TestBatchInput_JSON(t *testing.T) {
 
 	if input.Sessions[0].Name != "task1" {
 		t.Errorf("expected name 'task1', got %q", input.Sessions[0].Name)
+	}
+
+	if input.Sessions[0].SessionID != "abc123" {
+		t.Errorf("expected session_id 'abc123', got %q", input.Sessions[0].SessionID)
 	}
 
 	if input.Sessions[1].Remote != "https://github.com/org/repo" {
