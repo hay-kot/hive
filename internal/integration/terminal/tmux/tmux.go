@@ -21,8 +21,9 @@ type Integration struct {
 }
 
 type sessionCache struct {
-	workDir  string
-	activity int64
+	workDir      string
+	activity     int64
+	prevActivity int64 // activity from previous refresh
 }
 
 // New creates a new tmux integration.
@@ -73,11 +74,15 @@ func (t *Integration) RefreshCache() {
 			entry.workDir = parts[1]
 		}
 		if len(parts) >= 3 {
-			fmt.Sscanf(parts[2], "%d", &entry.activity)
+			_, _ = fmt.Sscanf(parts[2], "%d", &entry.activity)
 		}
 
 		// Keep maximum activity if session has multiple windows
 		if existing, ok := newCache[name]; !ok || entry.activity > existing.activity {
+			// Preserve previous activity from old cache
+			if old, ok := t.cache[name]; ok {
+				entry.prevActivity = old.activity
+			}
 			newCache[name] = entry
 		}
 	}
@@ -133,14 +138,18 @@ func (t *Integration) GetStatus(ctx context.Context, info *terminal.SessionInfo)
 		return terminal.StatusMissing, nil
 	}
 
-	// Check session exists
+	// Check session exists and get activity info
 	t.mu.RLock()
-	_, exists := t.cache[info.Name]
+	cached, exists := t.cache[info.Name]
 	t.mu.RUnlock()
 
 	if !exists {
 		return terminal.StatusMissing, nil
 	}
+
+	// Set activity info on SessionInfo
+	info.LastActivity = cached.activity
+	info.HasActivity = cached.activity != cached.prevActivity
 
 	// Capture pane content
 	content, err := t.capturePane(ctx, info.Name, info.Pane)
@@ -155,9 +164,9 @@ func (t *Integration) GetStatus(ctx context.Context, info *terminal.SessionInfo)
 		info.DetectedTool = tool
 	}
 
-	// Use detector to determine status
+	// Use detector to determine status, passing activity info
 	detector := terminal.NewDetector(tool)
-	return detector.DetectStatus(content), nil
+	return detector.DetectStatus(content, info.LastActivity, info.HasActivity), nil
 }
 
 // capturePane captures the content of a tmux pane.

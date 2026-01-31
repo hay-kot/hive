@@ -74,6 +74,10 @@ type Model struct {
 	terminalManager  *terminal.Manager
 	terminalStatuses *kv.Store[string, TerminalStatus]
 
+	// Status animation
+	animationFrame int
+	treeDelegate   TreeDelegate // Keep reference to update animation frame
+
 	// Filtering
 	localRemote string            // Remote URL of current directory (for highlighting)
 	allSessions []session.Session // All sessions (unfiltered)
@@ -216,6 +220,7 @@ func New(service *hive.Service, cfg *config.Config, opts Options) Model {
 		columnWidths:     columnWidths,
 		terminalManager:  opts.TerminalManager,
 		terminalStatuses: terminalStatuses,
+		treeDelegate:     delegate,
 		localRemote:      opts.LocalRemote,
 		msgStore:         opts.MsgStore,
 		msgView:          msgView,
@@ -242,9 +247,10 @@ func (m Model) Init() tea.Cmd {
 	if len(m.repoDirs) > 0 {
 		cmds = append(cmds, m.scanRepoDirs())
 	}
-	// Start terminal status polling if integration is enabled
+	// Start terminal status polling and animation if integration is enabled
 	if m.terminalManager != nil && m.terminalManager.HasEnabledIntegrations() {
 		cmds = append(cmds, startTerminalPollTicker(m.cfg.Integrations.Terminal.PollInterval))
+		cmds = append(cmds, scheduleAnimationTick())
 	}
 	return tea.Batch(cmds...)
 }
@@ -368,6 +374,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.terminalStatuses.SetBatch(msg.Results)
 		}
 		return m, nil
+
+	case animationTickMsg:
+		// Advance animation frame
+		m.animationFrame = (m.animationFrame + 1) % AnimationFrameCount
+		// Update the delegate with new frame
+		m.treeDelegate.AnimationFrame = m.animationFrame
+		m.list.SetDelegate(m.treeDelegate)
+		// Schedule next tick
+		return m, scheduleAnimationTick()
 
 	case actionCompleteMsg:
 		if msg.err != nil {

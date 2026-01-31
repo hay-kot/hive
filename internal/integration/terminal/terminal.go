@@ -19,6 +19,10 @@ type SessionInfo struct {
 	Pane         string // pane identifier if applicable
 	Status       Status // current detected status
 	DetectedTool string // detected AI tool (claude, gemini, etc.)
+
+	// Activity tracking
+	LastActivity int64 // unix timestamp of last activity
+	HasActivity  bool  // true if activity changed since last check
 }
 
 // Integration defines the interface for terminal multiplexer integrations.

@@ -2,6 +2,7 @@ package terminal
 
 import (
 	"strings"
+	"time"
 )
 
 // Detector detects AI tool status from terminal content.
@@ -104,14 +105,36 @@ func (d *Detector) IsWaiting(content string) bool {
 	return false
 }
 
-// DetectStatus returns the detected status based on terminal content.
-func (d *Detector) DetectStatus(content string) Status {
+// activityThreshold is how recently activity must have occurred to consider
+// the terminal as potentially active (even without explicit busy indicators).
+const activityThreshold = 2 * time.Second
+
+// DetectStatus returns the detected status based on terminal content and activity.
+// lastActivity is the unix timestamp of the last terminal activity.
+// hasActivity indicates if activity changed since the last check.
+func (d *Detector) DetectStatus(content string, lastActivity int64, hasActivity bool) Status {
 	if d.IsBusy(content) {
 		return StatusActive
 	}
 	if d.IsWaiting(content) {
 		return StatusWaiting
 	}
+
+	// Check for recent activity: if the terminal was active recently and we haven't
+	// detected a waiting prompt, assume the agent is still working.
+	// This handles cases where text is being output without spinners/interrupt indicators.
+	if lastActivity > 0 {
+		activityTime := time.Unix(lastActivity, 0)
+		if time.Since(activityTime) < activityThreshold {
+			return StatusActive
+		}
+	}
+
+	// Also consider hasActivity - if activity changed between polls, likely still working
+	if hasActivity {
+		return StatusActive
+	}
+
 	return StatusIdle
 }
 

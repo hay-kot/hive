@@ -28,13 +28,37 @@ const (
 	statusRecycled = "[○]" // gray - session recycled
 )
 
+// Animation constants.
+const (
+	// AnimationFrameCount is the total number of frames in the fade animation.
+	AnimationFrameCount = 12
+)
+
+// activeAnimationColors are the colors for the fade animation (bright → dim → bright).
+// Uses a smooth gradient for a breathing effect.
+var activeAnimationColors = []lipgloss.Color{
+	lipgloss.Color("#9ece6a"), // bright green (frame 0)
+	lipgloss.Color("#8fc05e"), // slightly dimmer
+	lipgloss.Color("#80b252"), // dimmer
+	lipgloss.Color("#71a446"), // even dimmer
+	lipgloss.Color("#62963a"), // dim
+	lipgloss.Color("#53882e"), // dimmest (frame 5)
+	lipgloss.Color("#53882e"), // dimmest (frame 6) - hold
+	lipgloss.Color("#62963a"), // brightening
+	lipgloss.Color("#71a446"), // brighter
+	lipgloss.Color("#80b252"), // even brighter
+	lipgloss.Color("#8fc05e"), // almost bright
+	lipgloss.Color("#9ece6a"), // bright green (frame 11)
+}
+
 // Star indicator for current repository.
 const currentRepoIndicator = "◆"
 
 // renderStatusIndicator returns the styled status indicator for a session.
 // For active sessions with terminal integration, it uses terminal status.
 // For recycled sessions or when no terminal status is available, it falls back to session state.
-func renderStatusIndicator(state session.State, termStatus *TerminalStatus, styles TreeDelegateStyles) string {
+// The animFrame parameter controls the fade animation for active status (0 to AnimationFrameCount-1).
+func renderStatusIndicator(state session.State, termStatus *TerminalStatus, styles TreeDelegateStyles, animFrame int) string {
 	// Recycled sessions always show recycled indicator
 	if state == session.StateRecycled {
 		return styles.StatusRecycled.Render(statusRecycled)
@@ -44,7 +68,7 @@ func renderStatusIndicator(state session.State, termStatus *TerminalStatus, styl
 	if state == session.StateActive && termStatus != nil {
 		switch termStatus.Status {
 		case terminal.StatusActive:
-			return styles.StatusActive.Render(statusActive)
+			return renderActiveIndicator(animFrame)
 		case terminal.StatusWaiting:
 			return styles.StatusWaiting.Render(statusWaiting)
 		case terminal.StatusIdle:
@@ -56,10 +80,20 @@ func renderStatusIndicator(state session.State, termStatus *TerminalStatus, styl
 
 	// Default: active session without terminal status
 	if state == session.StateActive {
-		return styles.StatusActive.Render(statusActive)
+		return renderActiveIndicator(animFrame)
 	}
 
 	return styles.StatusRecycled.Render(statusRecycled)
+}
+
+// renderActiveIndicator renders the active status with fade animation.
+func renderActiveIndicator(frame int) string {
+	// Ensure frame is in bounds
+	if frame < 0 || frame >= len(activeAnimationColors) {
+		frame = 0
+	}
+	style := lipgloss.NewStyle().Foreground(activeAnimationColors[frame])
+	return style.Render(statusActive)
 }
 
 // TreeItem represents an item in the tree view.
@@ -187,7 +221,7 @@ func RenderRepoHeader(item TreeItem, isSelected bool, styles TreeDelegateStyles)
 }
 
 // RenderSessionLine renders a session entry with tree prefix.
-func RenderSessionLine(item TreeItem, isSelected bool, gitBranch string, termStatus *TerminalStatus, styles TreeDelegateStyles) string {
+func RenderSessionLine(item TreeItem, isSelected bool, gitBranch string, termStatus *TerminalStatus, styles TreeDelegateStyles, animFrame int) string {
 	// Tree prefix
 	var prefix string
 	if item.IsLastInRepo {
@@ -198,7 +232,7 @@ func RenderSessionLine(item TreeItem, isSelected bool, gitBranch string, termSta
 	prefixStyled := styles.TreeLine.Render(prefix)
 
 	// Status indicator - use terminal status for active sessions
-	statusStr := renderStatusIndicator(item.Session.State, termStatus, styles)
+	statusStr := renderStatusIndicator(item.Session.State, termStatus, styles, animFrame)
 
 	// Session name
 	nameStyle := styles.SessionName
@@ -270,6 +304,7 @@ type TreeDelegate struct {
 	GitStatuses      *kv.Store[string, GitStatus]
 	TerminalStatuses *kv.Store[string, TerminalStatus]
 	ColumnWidths     *ColumnWidths
+	AnimationFrame   int // Current frame for status animations
 }
 
 // NewTreeDelegate creates a new tree delegate with default styles.
@@ -360,7 +395,7 @@ func (d TreeDelegate) renderSession(item TreeItem, isSelected bool, m list.Model
 	}
 
 	// Status indicator - use terminal status for active sessions
-	statusStr := renderStatusIndicator(item.Session.State, termStatus, d.Styles)
+	statusStr := renderStatusIndicator(item.Session.State, termStatus, d.Styles, d.AnimationFrame)
 
 	// For recycled sessions, show simplified display
 	if item.Session.State == session.StateRecycled {

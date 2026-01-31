@@ -63,3 +63,16 @@ func (m Model) scheduleSessionRefresh() tea.Cmd {
 		return sessionRefreshTickMsg{}
 	})
 }
+
+// Animation constants.
+const animationTickInterval = 100 * time.Millisecond
+
+// animationTickMsg is sent to advance the status animation.
+type animationTickMsg struct{}
+
+// scheduleAnimationTick returns a command that schedules the next animation frame.
+func scheduleAnimationTick() tea.Cmd {
+	return tea.Tick(animationTickInterval, func(time.Time) tea.Msg {
+		return animationTickMsg{}
+	})
+}
