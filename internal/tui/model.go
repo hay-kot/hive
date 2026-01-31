@@ -80,6 +80,7 @@ type Model struct {
 
 	// Layout
 	activeView ViewType // which view is shown
+	refreshing bool     // true during background session refresh
 
 	// Messages
 	msgStore     messaging.Store
@@ -310,6 +311,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case sessionRefreshTickMsg:
 		// Refresh sessions when Sessions view is active and no modal open
 		if m.activeView == ViewSessions && !m.isModalActive() {
+			m.refreshing = true
 			return m, tea.Batch(
 				m.loadSessions(),
 				m.scheduleSessionRefresh(),
@@ -763,14 +765,18 @@ func (m Model) applyFilter() (tea.Model, tea.Cmd) {
 	*m.columnWidths = CalculateColumnWidths(m.allSessions, nil)
 
 	// Collect paths for git status fetching
+	// During background refresh, keep existing statuses to avoid flashing
 	paths := make([]string, 0, len(m.allSessions))
 	for _, s := range m.allSessions {
 		paths = append(paths, s.Path)
-		m.gitStatuses.Set(s.Path, GitStatus{IsLoading: true})
+		if !m.refreshing {
+			m.gitStatuses.Set(s.Path, GitStatus{IsLoading: true})
+		}
 	}
 
 	m.list.SetItems(items)
 	m.state = stateNormal
+	m.refreshing = false
 
 	if len(paths) == 0 {
 		return m, nil
@@ -862,11 +868,15 @@ func (m Model) View() string {
 func (m Model) renderTabView() string {
 	// Build tab bar
 	var sessionsTab, messagesTab string
+	sessionsLabel := "Sessions"
+	if m.refreshing {
+		sessionsLabel = "Sessions " + m.spinner.View()
+	}
 	if m.activeView == ViewSessions {
-		sessionsTab = viewSelectedStyle.Render("Sessions")
+		sessionsTab = viewSelectedStyle.Render(sessionsLabel)
 		messagesTab = viewNormalStyle.Render("Messages")
 	} else {
-		sessionsTab = viewNormalStyle.Render("Sessions")
+		sessionsTab = viewNormalStyle.Render(sessionsLabel)
 		messagesTab = viewSelectedStyle.Render("Messages")
 	}
 	tabBarContent := lipgloss.JoinHorizontal(lipgloss.Left, sessionsTab, " | ", messagesTab)
