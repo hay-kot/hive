@@ -29,14 +29,27 @@ const (
 
 // Session represents an isolated git environment for an AI agent.
 type Session struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`
-	Slug      string    `json:"slug"`
-	Path      string    `json:"path"`
-	Remote    string    `json:"remote"`
-	State     State     `json:"state"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID            string     `json:"id"`
+	Name          string     `json:"name"`
+	Slug          string     `json:"slug"`
+	Path          string     `json:"path"`
+	Remote        string     `json:"remote"`
+	State         State      `json:"state"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
+	LastInboxRead *time.Time `json:"last_inbox_read,omitempty"`
+}
+
+// InboxTopic returns the conventional inbox topic name for this session.
+// Format: agent.<session-id>.inbox
+func (s *Session) InboxTopic() string {
+	return "agent." + s.ID + ".inbox"
+}
+
+// UpdateLastInboxRead updates the last inbox read timestamp.
+func (s *Session) UpdateLastInboxRead(t time.Time) {
+	s.LastInboxRead = &t
+	s.UpdatedAt = t
 }
 
 // CanRecycle returns true if the session can be marked for recycling.

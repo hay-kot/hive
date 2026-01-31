@@ -47,6 +47,25 @@ func TestSession_MarkRecycled(t *testing.T) {
 	assert.Equal(t, now, s.UpdatedAt)
 }
 
+func TestSession_InboxTopic(t *testing.T) {
+	s := Session{ID: "abc123"}
+	assert.Equal(t, "agent.abc123.inbox", s.InboxTopic())
+}
+
+func TestSession_UpdateLastInboxRead(t *testing.T) {
+	now := time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)
+	s := Session{
+		ID:        "test-id",
+		UpdatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+	}
+
+	s.UpdateLastInboxRead(now)
+
+	assert.NotNil(t, s.LastInboxRead)
+	assert.Equal(t, now, *s.LastInboxRead)
+	assert.Equal(t, now, s.UpdatedAt)
+}
+
 func TestSlugify(t *testing.T) {
 	tests := []struct {
 		name string

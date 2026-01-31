@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/hay-kot/hive/internal/core/messaging"
@@ -30,6 +31,7 @@ type MsgCmd struct {
 	subLast    int
 	subListen  bool
 	subWait    bool
+	subNew     bool
 
 	// topic flags
 	topicNew    bool
@@ -110,11 +112,13 @@ func (cmd *MsgCmd) subCmd() *cli.Command {
 	return &cli.Command{
 		Name:      "sub",
 		Usage:     "Read messages from a topic",
-		UsageText: "hive msg sub [--topic <pattern>] [--last N] [--listen]",
+		UsageText: "hive msg sub [--topic <pattern>] [--last N] [--listen] [--new]",
 		Description: `Reads messages from topics, optionally filtering by topic pattern.
 
 By default, returns all messages as JSON and exits. Use --listen to poll for new messages,
 or --wait to block until a single message arrives (useful for inter-agent handoff).
+
+Use --new to filter messages since your last inbox read (only works for inbox topics).
 
 Topic patterns:
 - No topic or "*": all messages
@@ -127,7 +131,8 @@ Examples:
   hive msg sub --topic agent.*          # wildcard pattern
   hive msg sub --last 10                # last 10 messages
   hive msg sub --listen                 # poll for new messages
-  hive msg sub --wait --topic handoff   # wait for single message (24h default timeout)`,
+  hive msg sub --wait --topic handoff   # wait for single message (24h default timeout)
+  hive msg sub -t agent.abc.inbox --new # only unread inbox messages`,
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:        "topic",
@@ -152,6 +157,11 @@ Examples:
 				Aliases:     []string{"w"},
 				Usage:       "wait for a single message and exit (for inter-agent handoff)",
 				Destination: &cmd.subWait,
+			},
+			&cli.BoolFlag{
+				Name:        "new",
+				Usage:       "only return messages since last inbox read (for inbox topics)",
+				Destination: &cmd.subNew,
 			},
 			&cli.StringFlag{
 				Name:        "timeout",
@@ -275,24 +285,33 @@ func (cmd *MsgCmd) runSub(ctx context.Context, c *cli.Command) error {
 		topic = "*"
 	}
 
+	// Determine since timestamp for --new flag
+	since := time.Time{}
+	if cmd.subNew {
+		since = cmd.getLastInboxRead(ctx, topic)
+	}
+
 	// Wait mode: wait for a single message and exit
 	if cmd.subWait {
-		return cmd.waitForMessage(ctx, c, store, topic)
+		return cmd.waitForMessage(ctx, c, store, topic, since)
 	}
 
 	// Listen mode: poll for new messages
 	if cmd.subListen {
-		return cmd.listenForMessages(ctx, c, store, topic)
+		return cmd.listenForMessages(ctx, c, store, topic, since)
 	}
 
 	// Default: return messages immediately
-	messages, err := store.Subscribe(ctx, topic, time.Time{})
+	messages, err := store.Subscribe(ctx, topic, since)
 	if err != nil {
 		if errors.Is(err, messaging.ErrTopicNotFound) {
 			return nil // No messages, no output
 		}
 		return fmt.Errorf("subscribe: %w", err)
 	}
+
+	// Update inbox read timestamp if subscribing to own inbox
+	cmd.updateInboxReadIfOwn(ctx, topic)
 
 	// Apply --last N limit if specified
 	if cmd.subLast > 0 && len(messages) > cmd.subLast {
@@ -302,14 +321,21 @@ func (cmd *MsgCmd) runSub(ctx context.Context, c *cli.Command) error {
 	return cmd.printMessages(c.Root().Writer, messages)
 }
 
-func (cmd *MsgCmd) listenForMessages(ctx context.Context, c *cli.Command, store *jsonfile.MsgStore, topic string) error {
+func (cmd *MsgCmd) listenForMessages(ctx context.Context, c *cli.Command, store *jsonfile.MsgStore, topic string, initialSince time.Time) error {
 	timeout, err := time.ParseDuration(cmd.subTimeout)
 	if err != nil {
 		return fmt.Errorf("invalid timeout: %w", err)
 	}
 
+	// Update inbox read timestamp if subscribing to own inbox
+	cmd.updateInboxReadIfOwn(ctx, topic)
+
 	deadline := time.Now().Add(timeout)
-	since := time.Now()
+	// Use initialSince if set (from --new flag), otherwise start from now
+	since := initialSince
+	if since.IsZero() {
+		since = time.Now()
+	}
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
 
@@ -337,7 +363,7 @@ func (cmd *MsgCmd) listenForMessages(ctx context.Context, c *cli.Command, store 
 	}
 }
 
-func (cmd *MsgCmd) waitForMessage(ctx context.Context, c *cli.Command, store *jsonfile.MsgStore, topic string) error {
+func (cmd *MsgCmd) waitForMessage(ctx context.Context, c *cli.Command, store *jsonfile.MsgStore, topic string, initialSince time.Time) error {
 	// Use 24h default for --wait mode (essentially forever for handoff scenarios)
 	timeout := 24 * time.Hour
 	if cmd.subTimeout != "30s" { // User explicitly set a timeout
@@ -348,8 +374,15 @@ func (cmd *MsgCmd) waitForMessage(ctx context.Context, c *cli.Command, store *js
 		}
 	}
 
+	// Update inbox read timestamp if subscribing to own inbox
+	cmd.updateInboxReadIfOwn(ctx, topic)
+
 	deadline := time.Now().Add(timeout)
-	since := time.Now()
+	// Use initialSince if set (from --new flag), otherwise start from now
+	since := initialSince
+	if since.IsZero() {
+		since = time.Now()
+	}
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
 
@@ -434,4 +467,68 @@ func (cmd *MsgCmd) printMessages(w io.Writer, messages []messaging.Message) erro
 		}
 	}
 	return nil
+}
+
+// updateInboxReadIfOwn updates the session's LastInboxRead timestamp if the
+// subscribed topic matches the current session's inbox pattern (agent.<id>.inbox).
+func (cmd *MsgCmd) updateInboxReadIfOwn(ctx context.Context, topic string) {
+	// Only process exact inbox topics, not wildcards
+	if !strings.HasSuffix(topic, ".inbox") {
+		return
+	}
+
+	// Extract session ID from topic (agent.<id>.inbox)
+	parts := strings.Split(topic, ".")
+	if len(parts) != 3 || parts[0] != "agent" || parts[2] != "inbox" {
+		return
+	}
+	topicSessionID := parts[1]
+
+	// Get current session ID
+	currentSessionID := cmd.detectSessionID(ctx)
+	if currentSessionID == "" || currentSessionID != topicSessionID {
+		return
+	}
+
+	// Update the session's LastInboxRead
+	sessionsPath := filepath.Join(cmd.flags.DataDir, "sessions.json")
+	sessStore := jsonfile.New(sessionsPath)
+
+	sess, err := sessStore.Get(ctx, currentSessionID)
+	if err != nil {
+		return // Silently ignore errors
+	}
+
+	sess.UpdateLastInboxRead(time.Now())
+	_ = sessStore.Save(ctx, sess) // Silently ignore errors
+}
+
+// getLastInboxRead returns the LastInboxRead timestamp for the session that owns
+// the given inbox topic. Returns zero time if not found or not an inbox topic.
+func (cmd *MsgCmd) getLastInboxRead(ctx context.Context, topic string) time.Time {
+	// Only process exact inbox topics, not wildcards
+	if !strings.HasSuffix(topic, ".inbox") {
+		return time.Time{}
+	}
+
+	// Extract session ID from topic (agent.<id>.inbox)
+	parts := strings.Split(topic, ".")
+	if len(parts) != 3 || parts[0] != "agent" || parts[2] != "inbox" {
+		return time.Time{}
+	}
+	topicSessionID := parts[1]
+
+	// Get the session's LastInboxRead
+	sessionsPath := filepath.Join(cmd.flags.DataDir, "sessions.json")
+	sessStore := jsonfile.New(sessionsPath)
+
+	sess, err := sessStore.Get(ctx, topicSessionID)
+	if err != nil {
+		return time.Time{}
+	}
+
+	if sess.LastInboxRead == nil {
+		return time.Time{}
+	}
+	return *sess.LastInboxRead
 }
