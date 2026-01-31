@@ -1,13 +1,12 @@
 package hive
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
-	"text/template"
 
 	"github.com/hay-kot/hive/pkg/executil"
+	"github.com/hay-kot/hive/pkg/tmpl"
 	"github.com/rs/zerolog"
 )
 
@@ -41,10 +40,9 @@ func (r *Recycler) Recycle(ctx context.Context, path string, commands []string, 
 	}
 
 	for _, cmd := range commands {
-		// Render template
-		rendered, err := r.renderCommand(cmd, data)
+		rendered, err := tmpl.Render(cmd, data)
 		if err != nil {
-			return fmt.Errorf("render command %q: %w", cmd, err)
+			return fmt.Errorf("render recycle command %q: %w", cmd, err)
 		}
 
 		r.log.Debug().Str("command", rendered).Msg("executing recycle command")
@@ -56,18 +54,4 @@ func (r *Recycler) Recycle(ctx context.Context, path string, commands []string, 
 
 	r.log.Debug().Msg("recycle complete")
 	return nil
-}
-
-func (r *Recycler) renderCommand(cmd string, data RecycleData) (string, error) {
-	tmpl, err := template.New("cmd").Parse(cmd)
-	if err != nil {
-		return "", err
-	}
-
-	var buf bytes.Buffer
-	if err := tmpl.Execute(&buf, data); err != nil {
-		return "", err
-	}
-
-	return buf.String(), nil
 }
