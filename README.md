@@ -100,13 +100,29 @@ def456  old-feature    recycled  ~/.local/share/hive/repos/myapp-old-feature-def
 
 #### `hive prune`
 
-Removes all recycled sessions and their directories.
+Removes recycled sessions exceeding the `max_recycled` limit.
+
+**Flags:**
+| Flag | Alias | Description |
+|------|-------|-------------|
+| `--all` | `-a` | Delete all recycled sessions (ignore max_recycled limit) |
 
 **Behavior:**
 
-- Only removes sessions with state `recycled`
-- Deletes both the session record and the cloned repository directory
+- By default, keeps the newest N recycled sessions per repository (based on `max_recycled` config)
+- With `--all`: deletes all recycled sessions regardless of limit
+- Always deletes corrupted sessions
 - Reports how many sessions were pruned
+
+**Examples:**
+
+```bash
+# Clean up sessions exceeding max_recycled limit
+hive prune
+
+# Delete ALL recycled sessions
+hive prune --all
+```
 
 ## Configuration
 
@@ -130,9 +146,14 @@ commands:
 git_path: git
 
 # Rules for repository-specific setup
-# Each rule can have commands (hooks) and/or copy patterns
-# Pattern uses regex syntax matched against the remote URL
+# Each rule can have commands (hooks), copy patterns, and max_recycled
+# Pattern uses regex syntax matched against the remote URL (empty = catch-all)
+# Rules are processed in order; last matching rule with max_recycled set wins
 rules:
+  # Catch-all rule sets the default max_recycled (code default is 5 if not set)
+  - pattern: ""
+    max_recycled: 5
+
   - pattern: ".*/my-org/.*"
     commands:
       - npm install
@@ -140,9 +161,18 @@ rules:
     copy:
       - .envrc
       - configs/*.yaml
+
   - pattern: ".*/hay-kot/.*"
     commands:
       - go mod download
+
+  # Override max_recycled for large repos (keep fewer sessions)
+  - pattern: ".*/my-org/large-repo"
+    max_recycled: 2
+
+  # Unlimited recycled sessions for specific repos
+  - pattern: ".*/my-org/special-repo"
+    max_recycled: 0
 
 # TUI settings
 tui:
@@ -192,9 +222,36 @@ keybindings:
 
 Rules run after cloning or recycling a session. Each rule has:
 
-- `pattern`: Regex pattern matched against the remote URL (empty matches all)
+- `pattern`: Regex pattern matched against the remote URL (empty = catch-all)
 - `commands`: Shell commands to execute in the session directory
 - `copy`: Glob patterns for files to copy from the source directory
+- `max_recycled`: Max recycled sessions for matching repos (0 = unlimited)
+
+### Max Recycled Sessions
+
+The `max_recycled` rule setting controls how many recycled sessions to keep per repository. When a session is recycled and the limit is exceeded, the oldest recycled sessions are automatically deleted.
+
+**Behavior:**
+- Rules are processed in order; last matching rule with `max_recycled` set wins
+- Use an empty pattern (`""`) as a catch-all to set the default
+- If no rule sets `max_recycled`, the code default is 5
+- `0` means unlimited (no automatic deletion)
+
+**Example:**
+```yaml
+rules:
+  # Catch-all sets the default for all repos
+  - pattern: ""
+    max_recycled: 5
+
+  # Large repos: keep fewer sessions
+  - pattern: "github.com/my-org/large-repo"
+    max_recycled: 2
+
+  # Explicitly unlimited for specific repos
+  - pattern: "github.com/my-org/unlimited-repo"
+    max_recycled: 0
+```
 
 ### Keybindings
 

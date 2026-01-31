@@ -6,6 +6,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"time"
 
@@ -81,6 +82,9 @@ type Rule struct {
 	Commands []string `yaml:"commands,omitempty"`
 	// Copy are glob patterns to copy from source directory.
 	Copy []string `yaml:"copy,omitempty"`
+	// MaxRecycled sets the max recycled sessions for matching repos.
+	// nil = inherit from previous rule or default (5), 0 = unlimited, >0 = limit
+	MaxRecycled *int `yaml:"max_recycled,omitempty"`
 }
 
 // Commands defines the shell commands used by hive.
@@ -214,7 +218,21 @@ func (c *Config) Validate() error {
 		criterio.Run("data_dir", c.DataDir, criterio.Required[string]),
 		criterio.Run("git.status_workers", c.Git.StatusWorkers, criterio.Min(1)),
 		c.validateKeybindingsBasic(),
+		c.validateMaxRecycled(),
 	)
+}
+
+// validateMaxRecycled checks that max_recycled values are non-negative.
+func (c *Config) validateMaxRecycled() error {
+	var errs criterio.FieldErrorsBuilder
+
+	for i, rule := range c.Rules {
+		if rule.MaxRecycled != nil && *rule.MaxRecycled < 0 {
+			errs = errs.Append(fmt.Sprintf("rules[%d].max_recycled", i), fmt.Errorf("must be >= 0, got %d", *rule.MaxRecycled))
+		}
+	}
+
+	return errs.ToError()
 }
 
 // validateKeybindingsBasic performs basic keybinding validation for the Validate() method.
@@ -281,4 +299,42 @@ func isValidAction(action string) bool {
 	default:
 		return false
 	}
+}
+
+// DefaultMaxRecycled is the default limit for recycled sessions per repository.
+const DefaultMaxRecycled = 5
+
+// GetMaxRecycled returns the max recycled sessions limit for the given remote URL.
+// Returns DefaultMaxRecycled (5) if no limit is configured.
+// Returns 0 for unlimited.
+func (c *Config) GetMaxRecycled(remote string) int {
+	// Check rules in order - last matching rule with MaxRecycled set wins
+	var result *int
+	for _, rule := range c.Rules {
+		if rule.Pattern == "" || matchesPattern(rule.Pattern, remote) {
+			if rule.MaxRecycled != nil {
+				result = rule.MaxRecycled
+			}
+		}
+	}
+
+	if result != nil {
+		return *result
+	}
+
+	return DefaultMaxRecycled
+}
+
+// matchesPattern checks if remote matches the regex pattern.
+func matchesPattern(pattern, remote string) bool {
+	matched, _ := filepath.Match(pattern, remote)
+	if matched {
+		return true
+	}
+	// Try regex matching
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		return false
+	}
+	return re.MatchString(remote)
 }

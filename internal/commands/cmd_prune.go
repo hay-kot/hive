@@ -21,13 +21,24 @@ func NewPruneCmd(flags *Flags) *PruneCmd {
 func (cmd *PruneCmd) Register(app *cli.Command) *cli.Command {
 	app.Commands = append(app.Commands, &cli.Command{
 		Name:      "prune",
-		Usage:     "Remove all recycled sessions",
-		UsageText: "hive prune",
-		Description: `Deletes all sessions marked as recycled and removes their directories.
+		Usage:     "Remove recycled sessions exceeding max_recycled limit",
+		UsageText: "hive prune [--all]",
+		Description: `Removes recycled sessions based on the max_recycled configuration.
 
-Active sessions are not affected. Use this to reclaim disk space from
-sessions that are no longer needed.`,
+By default, keeps the newest N recycled sessions per repository (based on
+max_recycled config) and deletes the rest.
+
+Use --all to delete ALL recycled sessions regardless of the limit.
+
+Active sessions are not affected.`,
 		Action: cmd.run,
+		Flags: []cli.Flag{
+			&cli.BoolFlag{
+				Name:    "all",
+				Aliases: []string{"a"},
+				Usage:   "Delete all recycled sessions (ignore max_recycled limit)",
+			},
+		},
 	})
 
 	return app
@@ -36,13 +47,18 @@ sessions that are no longer needed.`,
 func (cmd *PruneCmd) run(ctx context.Context, c *cli.Command) error {
 	p := printer.Ctx(ctx)
 
-	count, err := cmd.flags.Service.Prune(ctx)
+	all := c.Bool("all")
+	count, err := cmd.flags.Service.Prune(ctx, all)
 	if err != nil {
 		return fmt.Errorf("prune sessions: %w", err)
 	}
 
 	if count == 0 {
-		p.Infof("No recycled sessions to prune")
+		if all {
+			p.Infof("No recycled sessions to prune")
+		} else {
+			p.Infof("No sessions exceed max_recycled limit")
+		}
 		return nil
 	}
 

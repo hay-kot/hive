@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"time"
 
 	"github.com/hay-kot/hive/internal/core/config"
@@ -233,6 +234,11 @@ func (s *Service) RecycleSession(ctx context.Context, id string, w io.Writer) er
 		return fmt.Errorf("save session: %w", err)
 	}
 
+	// Enforce max recycled limit
+	if err := s.enforceMaxRecycled(ctx, sess.Remote); err != nil {
+		s.log.Warn().Err(err).Str("remote", sess.Remote).Msg("failed to enforce max recycled limit")
+	}
+
 	s.log.Info().Str("session_id", id).Str("path", newPath).Msg("session recycled")
 
 	return nil
@@ -260,9 +266,11 @@ func (s *Service) DeleteSession(ctx context.Context, id string) error {
 	return nil
 }
 
-// Prune removes all recycled and corrupted sessions and their directories.
-func (s *Service) Prune(ctx context.Context) (int, error) {
-	s.log.Info().Msg("pruning sessions")
+// Prune removes recycled and corrupted sessions and their directories.
+// If all is true, deletes ALL recycled sessions.
+// If all is false, respects max_recycled limit per repository (keeps newest N).
+func (s *Service) Prune(ctx context.Context, all bool) (int, error) {
+	s.log.Info().Bool("all", all).Msg("pruning sessions")
 
 	sessions, err := s.sessions.List(ctx)
 	if err != nil {
@@ -270,20 +278,74 @@ func (s *Service) Prune(ctx context.Context) (int, error) {
 	}
 
 	count := 0
+
+	// Always delete corrupted sessions
 	for _, sess := range sessions {
-		if sess.State != session.StateRecycled && sess.State != session.StateCorrupted {
-			continue
+		if sess.State == session.StateCorrupted {
+			if err := s.DeleteSession(ctx, sess.ID); err != nil {
+				s.log.Warn().Err(err).Str("session_id", sess.ID).Msg("failed to delete corrupted session")
+				continue
+			}
+			count++
 		}
+	}
 
-		if err := s.DeleteSession(ctx, sess.ID); err != nil {
-			s.log.Warn().Err(err).Str("session_id", sess.ID).Str("state", string(sess.State)).Msg("failed to prune session")
-			continue
+	if all {
+		// Delete ALL recycled sessions
+		for _, sess := range sessions {
+			if sess.State == session.StateRecycled {
+				if err := s.DeleteSession(ctx, sess.ID); err != nil {
+					s.log.Warn().Err(err).Str("session_id", sess.ID).Msg("failed to prune session")
+					continue
+				}
+				count++
+			}
 		}
-
-		count++
+	} else {
+		// Respect max_recycled limit per repository
+		deleted, err := s.pruneExcessRecycled(ctx, sessions)
+		if err != nil {
+			return count, fmt.Errorf("prune excess recycled: %w", err)
+		}
+		count += deleted
 	}
 
 	s.log.Info().Int("count", count).Msg("prune complete")
+
+	return count, nil
+}
+
+// pruneExcessRecycled deletes recycled sessions exceeding max_recycled per repository.
+func (s *Service) pruneExcessRecycled(ctx context.Context, sessions []session.Session) (int, error) {
+	// Group recycled sessions by remote
+	byRemote := make(map[string][]session.Session)
+	for _, sess := range sessions {
+		if sess.State == session.StateRecycled {
+			byRemote[sess.Remote] = append(byRemote[sess.Remote], sess)
+		}
+	}
+
+	count := 0
+	for remote, recycled := range byRemote {
+		limit := s.config.GetMaxRecycled(remote)
+		if limit == 0 || len(recycled) <= limit {
+			continue
+		}
+
+		// Sort by UpdatedAt descending (newest first)
+		sort.Slice(recycled, func(i, j int) bool {
+			return recycled[i].UpdatedAt.After(recycled[j].UpdatedAt)
+		})
+
+		// Delete oldest sessions beyond the limit
+		for _, sess := range recycled[limit:] {
+			if err := s.DeleteSession(ctx, sess.ID); err != nil {
+				s.log.Warn().Err(err).Str("session_id", sess.ID).Msg("failed to delete excess session")
+				continue
+			}
+			count++
+		}
+	}
 
 	return count, nil
 }
@@ -384,5 +446,52 @@ func (s *Service) executeRules(ctx context.Context, remote, source, dest string)
 			}
 		}
 	}
+	return nil
+}
+
+// enforceMaxRecycled deletes oldest recycled sessions for a remote when limit is exceeded.
+func (s *Service) enforceMaxRecycled(ctx context.Context, remote string) error {
+	limit := s.config.GetMaxRecycled(remote)
+	if limit == 0 {
+		// Unlimited
+		return nil
+	}
+
+	sessions, err := s.sessions.List(ctx)
+	if err != nil {
+		return fmt.Errorf("list sessions: %w", err)
+	}
+
+	// Collect recycled sessions for this remote
+	var recycled []session.Session
+	for _, sess := range sessions {
+		if sess.State == session.StateRecycled && sess.Remote == remote {
+			recycled = append(recycled, sess)
+		}
+	}
+
+	// Nothing to enforce
+	if len(recycled) <= limit {
+		return nil
+	}
+
+	// Sort by UpdatedAt descending (newest first)
+	sort.Slice(recycled, func(i, j int) bool {
+		return recycled[i].UpdatedAt.After(recycled[j].UpdatedAt)
+	})
+
+	// Delete oldest sessions beyond the limit
+	for _, sess := range recycled[limit:] {
+		s.log.Info().
+			Str("session_id", sess.ID).
+			Str("remote", remote).
+			Int("limit", limit).
+			Msg("deleting excess recycled session")
+
+		if err := s.DeleteSession(ctx, sess.ID); err != nil {
+			s.log.Warn().Err(err).Str("session_id", sess.ID).Msg("failed to delete excess recycled session")
+		}
+	}
+
 	return nil
 }
