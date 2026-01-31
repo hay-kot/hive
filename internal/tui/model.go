@@ -418,10 +418,25 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 // handleNewSessionFormKey handles keys when new session form is shown.
 func (m Model) handleNewSessionFormKey(msg tea.KeyMsg, keyStr string) (tea.Model, tea.Cmd) {
-	// Only intercept ctrl+c for quit - let form handle everything else including esc
 	if keyStr == "ctrl+c" {
 		m.quitting = true
 		return m, tea.Quit
+	}
+
+	// Check if the focused field is a Select that's filtering
+	isFiltering := false
+	if field := m.newSessionForm.Form().GetFocusedField(); field != nil {
+		if sel, ok := field.(*huh.Select[int]); ok {
+			isFiltering = sel.GetFiltering()
+		}
+	}
+
+	// Handle esc: if filtering, let form handle it to cancel filter; otherwise close dialog
+	if keyStr == "esc" && !isFiltering {
+		m.newSessionForm.SetCancelled()
+		m.state = stateNormal
+		m.newSessionForm = nil
+		return m, nil
 	}
 
 	// Pass to form
@@ -429,17 +444,11 @@ func (m Model) handleNewSessionFormKey(msg tea.KeyMsg, keyStr string) (tea.Model
 	if f, ok := form.(*huh.Form); ok {
 		m.newSessionForm.form = f
 
-		// Check if form completed or aborted
-		switch f.State {
-		case huh.StateCompleted:
+		// Check if form completed
+		if f.State == huh.StateCompleted {
 			m.newSessionForm.SetSubmitted()
 			result := m.newSessionForm.Result()
 			return m, m.createSession(result.Repo.Remote, result.SessionName)
-		case huh.StateAborted:
-			m.newSessionForm.SetCancelled()
-			m.state = stateNormal
-			m.newSessionForm = nil
-			return m, nil
 		}
 	}
 	return m, cmd
