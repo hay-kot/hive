@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"errors"
+
 	"github.com/charmbracelet/huh"
 	"github.com/hay-kot/hive/internal/styles"
 )
@@ -23,7 +25,8 @@ type NewSessionFormResult struct {
 
 // NewNewSessionForm creates a new session form with the given repos.
 // If preselectedRemote is non-empty, the matching repo will be pre-selected.
-func NewNewSessionForm(repos []DiscoveredRepo, preselectedRemote string) *NewSessionForm {
+// existingNames is used to validate that the session name is unique.
+func NewNewSessionForm(repos []DiscoveredRepo, preselectedRemote string, existingNames map[string]bool) *NewSessionForm {
 	f := &NewSessionForm{
 		repos: repos,
 	}
@@ -53,7 +56,15 @@ func NewNewSessionForm(repos []DiscoveredRepo, preselectedRemote string) *NewSes
 			huh.NewInput().
 				Title("Session Name").
 				Value(&f.sessionName).
-				Validate(huh.ValidateNotEmpty()),
+				Validate(func(s string) error {
+					if s == "" {
+						return errors.New("session name is required")
+					}
+					if existingNames[s] {
+						return errors.New("session name already exists")
+					}
+					return nil
+				}),
 		),
 	).WithTheme(styles.FormTheme())
 

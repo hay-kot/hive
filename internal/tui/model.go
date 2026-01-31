@@ -660,7 +660,12 @@ func (m Model) handleSessionsKey(msg tea.KeyMsg, keyStr string) (tea.Model, tea.
 		if selected := m.selectedSession(); selected != nil {
 			preselectedRemote = selected.Remote
 		}
-		m.newSessionForm = NewNewSessionForm(m.discoveredRepos, preselectedRemote)
+		// Build map of existing session names for validation
+		existingNames := make(map[string]bool, len(m.allSessions))
+		for _, s := range m.allSessions {
+			existingNames[s.Name] = true
+		}
+		m.newSessionForm = NewNewSessionForm(m.discoveredRepos, preselectedRemote, existingNames)
 		m.state = stateCreatingSession
 		return m, m.newSessionForm.Form().Init()
 	}

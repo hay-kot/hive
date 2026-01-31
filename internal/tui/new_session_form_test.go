@@ -15,7 +15,7 @@ func TestNewNewSessionForm(t *testing.T) {
 	}
 
 	t.Run("creates form with repos", func(t *testing.T) {
-		form := NewNewSessionForm(repos, "")
+		form := NewNewSessionForm(repos, "", nil)
 		require.NotNil(t, form)
 		require.NotNil(t, form.Form())
 		assert.False(t, form.Submitted())
@@ -23,17 +23,17 @@ func TestNewNewSessionForm(t *testing.T) {
 	})
 
 	t.Run("preselects matching remote", func(t *testing.T) {
-		form := NewNewSessionForm(repos, "git@github.com:user/beta.git")
+		form := NewNewSessionForm(repos, "git@github.com:user/beta.git", nil)
 		assert.Equal(t, 1, form.selectedIdx)
 	})
 
 	t.Run("defaults to first repo when no match", func(t *testing.T) {
-		form := NewNewSessionForm(repos, "git@github.com:user/unknown.git")
+		form := NewNewSessionForm(repos, "git@github.com:user/unknown.git", nil)
 		assert.Equal(t, 0, form.selectedIdx)
 	})
 
 	t.Run("result returns selected repo", func(t *testing.T) {
-		form := NewNewSessionForm(repos, "git@github.com:user/gamma.git")
+		form := NewNewSessionForm(repos, "git@github.com:user/gamma.git", nil)
 		form.sessionName = "my-session"
 		form.SetSubmitted()
 
@@ -43,14 +43,14 @@ func TestNewNewSessionForm(t *testing.T) {
 	})
 
 	t.Run("tracks submitted state", func(t *testing.T) {
-		form := NewNewSessionForm(repos, "")
+		form := NewNewSessionForm(repos, "", nil)
 		assert.False(t, form.Submitted())
 		form.SetSubmitted()
 		assert.True(t, form.Submitted())
 	})
 
 	t.Run("tracks cancelled state", func(t *testing.T) {
-		form := NewNewSessionForm(repos, "")
+		form := NewNewSessionForm(repos, "", nil)
 		assert.False(t, form.Cancelled())
 		form.SetCancelled()
 		assert.True(t, form.Cancelled())
