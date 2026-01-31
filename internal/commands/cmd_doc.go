@@ -72,6 +72,19 @@ type Migration struct {
 
 var migrations = []Migration{
 	{
+		Version:     "0.2.3",
+		Title:       "Configurable topic prefix for msg topic command",
+		Description: "The `hive msg topic` command now supports a configurable prefix via config or --prefix flag. The default prefix is \"agent\".",
+		Migration:   "No action required. To customize the default prefix, add messaging.topic_prefix to your config.",
+		After: `# config.yaml
+messaging:
+  topic_prefix: agent  # default, generates "agent.x7k2"
+
+# Or use --prefix flag to override:
+hive msg topic --prefix task    # generates "task.x7k2"
+hive msg topic --prefix ""      # generates "x7k2" (no prefix)`,
+	},
+	{
 		Version:     "0.2.2",
 		Title:       "New max_recycled rule setting",
 		Description: "Rules can now set max_recycled to limit recycled sessions per repository. Oldest sessions beyond the limit are automatically deleted when recycling.",

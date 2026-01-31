@@ -32,7 +32,8 @@ type MsgCmd struct {
 	subWait    bool
 
 	// topic flags
-	topicNew bool
+	topicNew    bool
+	topicPrefix string
 }
 
 // NewMsgCmd creates a new msg command.
@@ -180,20 +181,29 @@ func (cmd *MsgCmd) topicCmd() *cli.Command {
 	return &cli.Command{
 		Name:      "topic",
 		Usage:     "Generate a random topic ID",
-		UsageText: "hive msg topic --new",
+		UsageText: "hive msg topic [--prefix <prefix>]",
 		Description: `Generates a random topic ID for inter-agent communication.
 
-The generated topic ID follows the format "agent.<4-char-alphanumeric>".
+The generated topic ID follows the format "<prefix>.<4-char-alphanumeric>".
+The prefix defaults to "agent" but can be configured via messaging.topic_prefix
+in your config file, or overridden with --prefix.
 
 Examples:
-  hive msg topic --new    # outputs: agent.x7k2`,
+  hive msg topic              # outputs: agent.x7k2 (using config prefix)
+  hive msg topic --prefix task   # outputs: task.x7k2
+  hive msg topic --prefix ""     # outputs: x7k2 (no prefix)`,
 		Flags: []cli.Flag{
 			&cli.BoolFlag{
 				Name:        "new",
 				Aliases:     []string{"n"},
-				Usage:       "generate a new random topic ID",
-				Required:    true,
+				Usage:       "generate a new random topic ID (default behavior)",
 				Destination: &cmd.topicNew,
+			},
+			&cli.StringFlag{
+				Name:        "prefix",
+				Aliases:     []string{"p"},
+				Usage:       "topic prefix (overrides config, use empty string for no prefix)",
+				Destination: &cmd.topicPrefix,
 			},
 		},
 		Action: cmd.runTopic,
@@ -201,7 +211,21 @@ Examples:
 }
 
 func (cmd *MsgCmd) runTopic(_ context.Context, c *cli.Command) error {
-	topicID := "agent." + randid.Generate(4)
+	// Determine prefix: flag override > config > default "agent"
+	prefix := cmd.flags.Config.Messaging.TopicPrefix
+	if c.IsSet("prefix") {
+		prefix = cmd.topicPrefix
+	}
+
+	// Generate topic ID
+	id := randid.Generate(4)
+	var topicID string
+	if prefix != "" {
+		topicID = prefix + "." + id
+	} else {
+		topicID = id
+	}
+
 	_, err := fmt.Fprintln(c.Root().Writer, topicID)
 	return err
 }

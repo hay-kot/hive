@@ -36,7 +36,7 @@ var defaultKeybindings = map[string]Keybinding{
 
 // CurrentConfigVersion is the latest config schema version.
 // Increment this when making breaking changes to config format.
-const CurrentConfigVersion = "0.2.2"
+const CurrentConfigVersion = "0.2.3"
 
 // Config holds the application configuration.
 type Config struct {
@@ -50,6 +50,7 @@ type Config struct {
 	History             HistoryConfig         `yaml:"history"`
 	Context             ContextConfig         `yaml:"context"`
 	TUI                 TUIConfig             `yaml:"tui"`
+	Messaging           MessagingConfig       `yaml:"messaging"`
 	RepoDirs            []string              `yaml:"repo_dirs"` // directories containing git repositories for new session dialog
 	DataDir             string                `yaml:"-"`         // set by caller, not from config file
 }
@@ -67,6 +68,11 @@ type ContextConfig struct {
 // TUIConfig holds TUI-related configuration.
 type TUIConfig struct {
 	RefreshInterval time.Duration `yaml:"refresh_interval"` // default: 15s, 0 to disable
+}
+
+// MessagingConfig holds messaging-related configuration.
+type MessagingConfig struct {
+	TopicPrefix string `yaml:"topic_prefix"` // default: "agent"
 }
 
 // GitConfig holds git-related configuration.
@@ -131,6 +137,9 @@ func DefaultConfig() Config {
 		},
 		TUI: TUIConfig{
 			RefreshInterval: 15 * time.Second,
+		},
+		Messaging: MessagingConfig{
+			TopicPrefix: "agent",
 		},
 	}
 }
