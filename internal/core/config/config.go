@@ -102,6 +102,7 @@ func DefaultConfig() Config {
 				"git fetch origin",
 				"git checkout {{ .DefaultBranch }}",
 				"git reset --hard origin/{{ .DefaultBranch }}",
+				"git clean -fd",
 			},
 		},
 		Git: GitConfig{

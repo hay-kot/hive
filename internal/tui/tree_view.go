@@ -322,6 +322,12 @@ func (d TreeDelegate) renderSession(item TreeItem, isSelected bool, m list.Model
 		statusStr = d.Styles.StatusRecycled.Render(statusRecycled)
 	}
 
+	// For recycled sessions, show simplified display
+	if item.Session.State == session.StateRecycled {
+		label := d.Styles.StatusRecycled.Render("recycled")
+		return fmt.Sprintf("%s %s %s", prefixStyled, statusStr, label)
+	}
+
 	// Session name with filter matching
 	nameStyle := d.Styles.SessionName
 	matchStyle := d.Styles.FilterMatch
