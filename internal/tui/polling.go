@@ -23,6 +23,12 @@ type pollTickMsg struct{}
 // sessionRefreshTickMsg is sent to trigger session list refresh.
 type sessionRefreshTickMsg struct{}
 
+// activitiesLoadedMsg is sent when activities are loaded from the store.
+type activitiesLoadedMsg struct {
+	activities []messaging.Activity
+	err        error
+}
+
 // loadMessages returns a command that loads messages from the store.
 func loadMessages(store messaging.Store, topic string, since time.Time) tea.Cmd {
 	return func() tea.Msg {
@@ -51,6 +57,28 @@ func schedulePollTick() tea.Cmd {
 	return tea.Tick(messagesPollInterval, func(time.Time) tea.Msg {
 		return pollTickMsg{}
 	})
+}
+
+// loadActivities returns a command that loads activities from the store.
+func loadActivities(store messaging.ActivityStore, since time.Time, limit int) tea.Cmd {
+	return func() tea.Msg {
+		if store == nil {
+			return activitiesLoadedMsg{err: nil}
+		}
+
+		var activities []messaging.Activity
+		var err error
+		if since.IsZero() {
+			activities, err = store.List(limit)
+		} else {
+			activities, err = store.ListSince(since, limit)
+		}
+		if err != nil {
+			return activitiesLoadedMsg{err: err}
+		}
+
+		return activitiesLoadedMsg{activities: activities, err: nil}
+	}
 }
 
 // scheduleSessionRefresh returns a command that schedules the next session refresh.

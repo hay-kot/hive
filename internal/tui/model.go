@@ -39,8 +39,9 @@ const (
 
 // Options configures the TUI behavior.
 type Options struct {
-	LocalRemote string          // Remote URL of current directory (empty if not in git repo)
-	MsgStore    messaging.Store // Message store for pub/sub events (optional)
+	LocalRemote   string                  // Remote URL of current directory (empty if not in git repo)
+	MsgStore      messaging.Store         // Message store for pub/sub events (optional)
+	ActivityStore messaging.ActivityStore // Activity store for tracking pub/sub activity (optional)
 }
 
 // PendingCreate holds data for a session to create after TUI exits.
@@ -91,6 +92,12 @@ type Model struct {
 
 	// Message preview
 	previewModal MessagePreviewModal
+
+	// Activity tracking
+	activityStore    messaging.ActivityStore
+	activityView     *ActivityView
+	allActivities    []messaging.Activity
+	lastActivityPoll time.Time
 
 	// Clipboard
 	copyCommand string
@@ -196,23 +203,28 @@ func New(service *hive.Service, cfg *config.Config, opts Options) Model {
 	// Create message view
 	msgView := NewMessagesView()
 
+	// Create activity view
+	activityView := NewActivityView()
+
 	return Model{
-		cfg:          cfg,
-		service:      service,
-		list:         l,
-		handler:      handler,
-		state:        stateNormal,
-		spinner:      s,
-		gitStatuses:  gitStatuses,
-		gitWorkers:   cfg.Git.StatusWorkers,
-		columnWidths: columnWidths,
-		localRemote:  opts.LocalRemote,
-		msgStore:     opts.MsgStore,
-		msgView:      msgView,
-		topicFilter:  "*",
-		activeView:   ViewSessions,
-		copyCommand:  cfg.Commands.CopyCommand,
-		repoDirs:     cfg.RepoDirs,
+		cfg:           cfg,
+		service:       service,
+		list:          l,
+		handler:       handler,
+		state:         stateNormal,
+		spinner:       s,
+		gitStatuses:   gitStatuses,
+		gitWorkers:    cfg.Git.StatusWorkers,
+		columnWidths:  columnWidths,
+		localRemote:   opts.LocalRemote,
+		msgStore:      opts.MsgStore,
+		msgView:       msgView,
+		topicFilter:   "*",
+		activeView:    ViewSessions,
+		copyCommand:   cfg.Commands.CopyCommand,
+		repoDirs:      cfg.RepoDirs,
+		activityStore: opts.ActivityStore,
+		activityView:  activityView,
 	}
 }
 
@@ -223,6 +235,10 @@ func (m Model) Init() tea.Cmd {
 	if m.msgStore != nil {
 		cmds = append(cmds, loadMessages(m.msgStore, m.topicFilter, time.Time{}))
 		cmds = append(cmds, schedulePollTick())
+	}
+	// Start activity polling if we have a store
+	if m.activityStore != nil {
+		cmds = append(cmds, loadActivities(m.activityStore, time.Time{}, 100))
 	}
 	// Start session refresh timer
 	if cmd := m.scheduleSessionRefresh(); cmd != nil {
@@ -274,8 +290,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		m.list.SetSize(msg.Width, contentHeight)
-		// msgView gets -1 because we prepend a blank line for consistent spacing
+		// msgView and activityView get -1 because we prepend a blank line for consistent spacing
 		m.msgView.SetSize(msg.Width, contentHeight-1)
+		m.activityView.SetSize(msg.Width, contentHeight-1)
 		return m, nil
 
 	case messagesLoadedMsg:
@@ -297,16 +314,32 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.lastPollTime = time.Now()
 		return m, nil
 
-	case pollTickMsg:
-		// Only poll if messages are visible
-		if m.shouldPollMessages() && m.msgStore != nil {
-			return m, tea.Batch(
-				loadMessages(m.msgStore, m.topicFilter, m.lastPollTime),
-				schedulePollTick(),
-			)
+	case activitiesLoadedMsg:
+		if msg.err != nil {
+			// Silently ignore activity loading errors
+			return m, nil
 		}
-		// Keep scheduling poll ticks even if not actively polling
-		return m, schedulePollTick()
+		// Activities are already newest first from store
+		if len(msg.activities) > 0 {
+			m.allActivities = msg.activities
+			m.activityView.SetActivities(msg.activities)
+		}
+		m.lastActivityPoll = time.Now()
+		return m, nil
+
+	case pollTickMsg:
+		var cmds []tea.Cmd
+		// Poll messages if messages view is visible
+		if m.shouldPollMessages() && m.msgStore != nil {
+			cmds = append(cmds, loadMessages(m.msgStore, m.topicFilter, m.lastPollTime))
+		}
+		// Poll activities if activity view is visible
+		if m.shouldPollActivities() && m.activityStore != nil {
+			cmds = append(cmds, loadActivities(m.activityStore, m.lastActivityPoll, 100))
+		}
+		// Keep scheduling poll ticks
+		cmds = append(cmds, schedulePollTick())
+		return m, tea.Batch(cmds...)
 
 	case sessionRefreshTickMsg:
 		// Refresh sessions when Sessions view is active and no modal open
@@ -637,6 +670,17 @@ func (m Model) handleNormalKey(msg tea.KeyMsg, keyStr string) (tea.Model, tea.Cm
 		return m.handleSessionsKey(msg, keyStr)
 	}
 
+	// Activity view focused - handle navigation
+	if m.isActivityFocused() {
+		switch keyStr {
+		case "up", "k":
+			m.activityView.MoveUp()
+		case "down", "j":
+			m.activityView.MoveDown()
+		}
+		return m, nil
+	}
+
 	// Messages view focused - handle navigation
 	switch keyStr {
 	case keyEnter:
@@ -658,9 +702,12 @@ func (m Model) handleNormalKey(msg tea.KeyMsg, keyStr string) (tea.Model, tea.Cm
 
 // handleTabKey handles tab key for switching views.
 func (m Model) handleTabKey() (tea.Model, tea.Cmd) {
-	if m.activeView == ViewSessions {
+	switch m.activeView {
+	case ViewSessions:
 		m.activeView = ViewMessages
-	} else {
+	case ViewMessages:
+		m.activeView = ViewActivity
+	case ViewActivity:
 		m.activeView = ViewSessions
 	}
 	return m, nil
@@ -746,9 +793,19 @@ func (m Model) isMessagesFocused() bool {
 	return m.activeView == ViewMessages
 }
 
+// isActivityFocused returns true if the activity view is active.
+func (m Model) isActivityFocused() bool {
+	return m.activeView == ViewActivity
+}
+
 // shouldPollMessages returns true if messages should be polled.
 func (m Model) shouldPollMessages() bool {
 	return m.activeView == ViewMessages
+}
+
+// shouldPollActivities returns true if activities should be polled.
+func (m Model) shouldPollActivities() bool {
+	return m.activeView == ViewActivity
 }
 
 // isModalActive returns true if any modal is currently open.
@@ -869,15 +926,20 @@ func (m Model) View() string {
 // renderTabView renders the tab-based view layout.
 func (m Model) renderTabView() string {
 	// Build tab bar
-	var sessionsTab, messagesTab string
-	if m.activeView == ViewSessions {
+	sessionsTab := viewNormalStyle.Render("Sessions")
+	messagesTab := viewNormalStyle.Render("Messages")
+	activityTab := viewNormalStyle.Render("Activity")
+
+	switch m.activeView {
+	case ViewSessions:
 		sessionsTab = viewSelectedStyle.Render("Sessions")
-		messagesTab = viewNormalStyle.Render("Messages")
-	} else {
-		sessionsTab = viewNormalStyle.Render("Sessions")
+	case ViewMessages:
 		messagesTab = viewSelectedStyle.Render("Messages")
+	case ViewActivity:
+		activityTab = viewSelectedStyle.Render("Activity")
 	}
-	tabBarContent := lipgloss.JoinHorizontal(lipgloss.Left, sessionsTab, " | ", messagesTab)
+
+	tabBarContent := lipgloss.JoinHorizontal(lipgloss.Left, sessionsTab, " | ", messagesTab, " | ", activityTab)
 	tabBar := lipgloss.NewStyle().PaddingLeft(1).Render(tabBarContent)
 
 	// Calculate content height: total - banner (5) - tab bar (1)
@@ -888,11 +950,15 @@ func (m Model) renderTabView() string {
 
 	// Build content with fixed height to prevent layout shift
 	var content string
-	if m.activeView == ViewSessions {
+	switch m.activeView {
+	case ViewSessions:
 		content = m.list.View()
-	} else {
+	case ViewMessages:
 		// Add blank line to match list's internal titleView padding
 		content = "\n" + m.msgView.View()
+	case ViewActivity:
+		// Add blank line to match list's internal titleView padding
+		content = "\n" + m.activityView.View()
 	}
 
 	// Ensure consistent height

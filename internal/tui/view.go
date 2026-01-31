@@ -6,4 +6,5 @@ type ViewType int
 const (
 	ViewSessions ViewType = iota
 	ViewMessages
+	ViewActivity
 )

@@ -14,6 +14,7 @@ var (
 	colorBlue   = styles.ColorBlue
 	colorGray   = styles.ColorGray
 	colorWhite  = styles.ColorWhite
+	colorPurple = lipgloss.Color("#bb9af7")
 )
 
 // Styles used for rendering the TUI (lipgloss v1 for bubbles compatibility).

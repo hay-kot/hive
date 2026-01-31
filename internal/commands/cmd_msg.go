@@ -29,6 +29,9 @@ type MsgCmd struct {
 	subLast    int
 	subListen  bool
 	subWait    bool
+
+	// activity store (lazy initialized)
+	activityStore *jsonfile.ActivityStore
 }
 
 // NewMsgCmd creates a new msg command.
@@ -194,16 +197,26 @@ func (cmd *MsgCmd) runPub(ctx context.Context, c *cli.Command) error {
 		payload = string(data)
 	}
 
+	sessionID := cmd.detectSessionID(ctx)
 	msg := messaging.Message{
 		Topic:     cmd.pubTopic,
 		Payload:   payload,
 		Sender:    cmd.pubSender,
-		SessionID: cmd.detectSessionID(ctx),
+		SessionID: sessionID,
 	}
 
 	if err := store.Publish(ctx, msg); err != nil {
 		return fmt.Errorf("publish message: %w", err)
 	}
+
+	// Record activity (best effort, don't fail on error)
+	_ = cmd.getActivityStore().Record(messaging.Activity{
+		Type:      messaging.ActivityPublish,
+		Topic:     cmd.pubTopic,
+		SessionID: sessionID,
+		Sender:    cmd.pubSender,
+		MessageID: msg.ID,
+	})
 
 	return nil
 }
@@ -215,6 +228,14 @@ func (cmd *MsgCmd) runSub(ctx context.Context, c *cli.Command) error {
 	if topic == "" {
 		topic = "*"
 	}
+
+	// Record subscribe activity (best effort)
+	sessionID := cmd.detectSessionID(ctx)
+	_ = cmd.getActivityStore().Record(messaging.Activity{
+		Type:      messaging.ActivitySubscribe,
+		Topic:     topic,
+		SessionID: sessionID,
+	})
 
 	// Wait mode: wait for a single message and exit
 	if cmd.subWait {
@@ -356,6 +377,14 @@ func (cmd *MsgCmd) runList(ctx context.Context, c *cli.Command) error {
 func (cmd *MsgCmd) getMsgStore() *jsonfile.MsgStore {
 	topicsDir := filepath.Join(cmd.flags.DataDir, "messages", "topics")
 	return jsonfile.NewMsgStore(topicsDir)
+}
+
+func (cmd *MsgCmd) getActivityStore() *jsonfile.ActivityStore {
+	if cmd.activityStore == nil {
+		activityDir := filepath.Join(cmd.flags.DataDir, "messages")
+		cmd.activityStore = jsonfile.NewActivityStore(activityDir)
+	}
+	return cmd.activityStore
 }
 
 func (cmd *MsgCmd) detectSessionID(ctx context.Context) string {

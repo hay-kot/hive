@@ -40,13 +40,18 @@ func (cmd *TuiCmd) run(ctx context.Context, _ *cli.Command) error {
 	localRemote, _ := cmd.flags.Service.DetectRemote(ctx, ".")
 
 	// Create message store for pub/sub events
-	topicsDir := filepath.Join(cmd.flags.DataDir, "messages", "topics")
+	messagesDir := filepath.Join(cmd.flags.DataDir, "messages")
+	topicsDir := filepath.Join(messagesDir, "topics")
 	msgStore := jsonfile.NewMsgStore(topicsDir)
+
+	// Create activity store for tracking pub/sub activity
+	activityStore := jsonfile.NewActivityStore(messagesDir)
 
 	for {
 		opts := tui.Options{
-			LocalRemote: localRemote,
-			MsgStore:    msgStore,
+			LocalRemote:   localRemote,
+			MsgStore:      msgStore,
+			ActivityStore: activityStore,
 		}
 
 		m := tui.New(cmd.flags.Service, cmd.flags.Config, opts)
