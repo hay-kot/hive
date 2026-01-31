@@ -170,33 +170,15 @@ func (s *MsgStore) Subscribe(ctx context.Context, topic string, since time.Time)
 	return messages, nil
 }
 
-// List returns all topic names.
+// List returns all topic names (sorted).
 func (s *MsgStore) List(ctx context.Context) ([]string, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	entries, err := os.ReadDir(s.topicsDir)
+	topics, err := s.readTopicsFromDisk()
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("read topics directory: %w", err)
+		return nil, err
 	}
-
-	var topics []string
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-		name := entry.Name()
-		if strings.HasSuffix(name, ".json") && !strings.HasSuffix(name, ".lock") {
-			// Remove .json suffix and restore slashes
-			topic := strings.TrimSuffix(name, ".json")
-			topic = strings.ReplaceAll(topic, "_", "/")
-			topics = append(topics, topic)
-		}
-	}
-
 	sort.Strings(topics)
 	return topics, nil
 }
@@ -281,6 +263,13 @@ func (s *MsgStore) matchingTopics(pattern string) ([]string, error) {
 // listTopicsUnsafe returns all topic names without locking.
 // Caller must hold s.mu.
 func (s *MsgStore) listTopicsUnsafe() ([]string, error) {
+	return s.readTopicsFromDisk()
+}
+
+// readTopicsFromDisk reads topic names from the topics directory.
+// Returns nil, nil if directory doesn't exist.
+// Caller is responsible for locking.
+func (s *MsgStore) readTopicsFromDisk() ([]string, error) {
 	entries, err := os.ReadDir(s.topicsDir)
 	if err != nil {
 		if os.IsNotExist(err) {

@@ -23,28 +23,28 @@ func NewExecutor(gitPath string, exec executil.Executor) *Executor {
 
 func (e *Executor) Clone(ctx context.Context, url, dest string) error {
 	if _, err := e.exec.Run(ctx, e.gitPath, "clone", url, dest); err != nil {
-		return fmt.Errorf("clone %s to %s: %w", url, dest, err)
+		return fmt.Errorf("git clone: %w", err)
 	}
 	return nil
 }
 
 func (e *Executor) Checkout(ctx context.Context, dir, branch string) error {
 	if _, err := e.exec.RunDir(ctx, dir, e.gitPath, "checkout", branch); err != nil {
-		return fmt.Errorf("checkout %s: %w", branch, err)
+		return fmt.Errorf("git checkout %s: %w", branch, err)
 	}
 	return nil
 }
 
 func (e *Executor) Pull(ctx context.Context, dir string) error {
 	if _, err := e.exec.RunDir(ctx, dir, e.gitPath, "pull"); err != nil {
-		return fmt.Errorf("pull: %w", err)
+		return fmt.Errorf("git pull: %w", err)
 	}
 	return nil
 }
 
 func (e *Executor) ResetHard(ctx context.Context, dir string) error {
 	if _, err := e.exec.RunDir(ctx, dir, e.gitPath, "reset", "--hard"); err != nil {
-		return fmt.Errorf("reset --hard: %w", err)
+		return fmt.Errorf("git reset --hard: %w", err)
 	}
 	return nil
 }
@@ -52,7 +52,7 @@ func (e *Executor) ResetHard(ctx context.Context, dir string) error {
 func (e *Executor) RemoteURL(ctx context.Context, dir string) (string, error) {
 	out, err := e.exec.RunDir(ctx, dir, e.gitPath, "remote", "get-url", "origin")
 	if err != nil {
-		return "", fmt.Errorf("get remote url: %w", err)
+		return "", fmt.Errorf("git remote get-url: %w", err)
 	}
 	return strings.TrimSpace(string(out)), nil
 }

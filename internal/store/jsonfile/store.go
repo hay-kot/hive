@@ -4,6 +4,7 @@ package jsonfile
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
@@ -133,7 +134,7 @@ func (s *Store) load() (SessionFile, error) {
 		if os.IsNotExist(err) {
 			return SessionFile{}, nil
 		}
-		return SessionFile{}, err
+		return SessionFile{}, fmt.Errorf("read sessions file: %w", err)
 	}
 
 	if len(data) == 0 {
@@ -142,7 +143,7 @@ func (s *Store) load() (SessionFile, error) {
 
 	var file SessionFile
 	if err := json.Unmarshal(data, &file); err != nil {
-		return SessionFile{}, err
+		return SessionFile{}, fmt.Errorf("parse sessions file: %w", err)
 	}
 
 	return file, nil
@@ -152,18 +153,21 @@ func (s *Store) load() (SessionFile, error) {
 // Uses write-to-temp-then-rename to prevent corruption from interrupted writes.
 func (s *Store) save(file SessionFile) error {
 	if err := os.MkdirAll(filepath.Dir(s.path), 0o755); err != nil {
-		return err
+		return fmt.Errorf("create sessions directory: %w", err)
 	}
 
 	data, err := json.MarshalIndent(file, "", "  ")
 	if err != nil {
-		return err
+		return fmt.Errorf("marshal sessions: %w", err)
 	}
 
 	tmp := s.path + ".tmp"
 	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		return err
+		return fmt.Errorf("write temp file: %w", err)
 	}
 
-	return os.Rename(tmp, s.path)
+	if err := os.Rename(tmp, s.path); err != nil {
+		return fmt.Errorf("rename temp file: %w", err)
+	}
+	return nil
 }
