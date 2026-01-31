@@ -36,7 +36,7 @@ var defaultKeybindings = map[string]Keybinding{
 
 // CurrentConfigVersion is the latest config schema version.
 // Increment this when making breaking changes to config format.
-const CurrentConfigVersion = "0.2.1"
+const CurrentConfigVersion = "0.2.2"
 
 // Config holds the application configuration.
 type Config struct {
