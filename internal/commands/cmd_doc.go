@@ -72,6 +72,33 @@ type Migration struct {
 
 var migrations = []Migration{
 	{
+		Version:     "0.2.2",
+		Title:       "New max_recycled rule setting",
+		Description: "Rules can now set max_recycled to limit recycled sessions per repository. Oldest sessions beyond the limit are automatically deleted when recycling.",
+		Migration:   "No action required. Default is 5 sessions per repo. Configure via rules with empty pattern as catch-all.",
+		After: `# config.yaml
+rules:
+  # Catch-all sets the default (code default is 5 if not set)
+  - pattern: ""
+    max_recycled: 5
+
+  # Override for specific repos
+  - pattern: "github.com/my-org/large-repo"
+    max_recycled: 2  # keep fewer
+
+  # Unlimited for some repos
+  - pattern: "github.com/my-org/special-repo"
+    max_recycled: 0  # 0 = unlimited`,
+	},
+	{
+		Version:     "0.2.2",
+		Title:       "New prune --all flag",
+		Description: "The `hive prune` command now respects max_recycled limits by default. Use --all to delete all recycled sessions.",
+		Migration:   "If you want the old behavior (delete all recycled), use `hive prune --all`.",
+		Before:      `hive prune  # deleted all recycled sessions`,
+		After:       `hive prune --all  # same behavior as before`,
+	},
+	{
 		Version:     "0.2.1",
 		Title:       "New TUI auto-refresh feature",
 		Description: "The TUI sessions view now auto-refreshes every 15 seconds by default. This can be configured or disabled.",
