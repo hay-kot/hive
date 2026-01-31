@@ -102,6 +102,7 @@ type Keybinding struct {
 	Sh      string `yaml:"sh"`      // shell command template
 	Confirm string `yaml:"confirm"` // confirmation prompt (empty = no confirm)
 	Silent  bool   `yaml:"silent"`  // skip loading popup for fast commands
+	Exit    bool   `yaml:"exit"`    // exit hive after command completes (useful for tmux popup)
 }
 
 // DefaultConfig returns a Config with sensible defaults.

@@ -35,6 +35,7 @@ type Action struct {
 	SessionID   string
 	SessionPath string
 	Silent      bool // Skip loading popup for fast commands
+	Exit        bool // Exit hive after command completes
 }
 
 // NeedsConfirm returns true if the action requires user confirmation.
@@ -70,6 +71,7 @@ func (h *KeybindingHandler) Resolve(key string, sess session.Session) (Action, b
 		SessionID:   sess.ID,
 		SessionPath: sess.Path,
 		Silent:      kb.Silent,
+		Exit:        kb.Exit,
 	}
 
 	// Built-in actions

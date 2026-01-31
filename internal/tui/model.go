@@ -343,6 +343,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.pending = Action{}
 			return m, nil
 		}
+		// Exit if the action requested it
+		if m.pending.Exit {
+			m.quitting = true
+			return m, tea.Quit
+		}
 		m.state = stateNormal
 		m.pending = Action{}
 		// Reload sessions after action
@@ -703,6 +708,8 @@ func (m Model) handleSessionsKey(msg tea.KeyMsg, keyStr string) (tea.Model, tea.
 		if action.Type == ActionTypeRecycle {
 			return m, m.startRecycle(action.SessionID)
 		}
+		// Store pending action for exit check after completion
+		m.pending = action
 		if !action.Silent {
 			m.state = stateLoading
 			m.loadingMessage = "Processing..."
