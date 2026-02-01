@@ -5,11 +5,10 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/viewport"
+	"charm.land/bubbles/v2/viewport"
+	lipgloss "charm.land/lipgloss/v2"
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/glamour/styles"
-	lipglossv1 "github.com/charmbracelet/lipgloss"
-	lipgloss "github.com/charmbracelet/lipgloss/v2"
 	"github.com/hay-kot/hive/internal/core/messaging"
 )
 
@@ -36,8 +35,10 @@ func NewMessagePreviewModal(msg messaging.Message, width, height int) MessagePre
 	modalHeight := min(height-previewModalMargin, previewModalMaxHeight)
 	contentHeight := modalHeight - previewModalChrome
 
-	vp := viewport.New(modalWidth-previewModalPadding, contentHeight)
-	vp.Style = lipglossv1.NewStyle()
+	vp := viewport.New(
+		viewport.WithWidth(modalWidth-previewModalPadding),
+		viewport.WithHeight(contentHeight),
+	)
 
 	m := MessagePreviewModal{
 		message:  msg,
@@ -165,11 +166,19 @@ func (m MessagePreviewModal) Overlay(background string, width, height int) strin
 		Height(modalHeight).
 		Render(modalContent)
 
-	return lipgloss.Place(
-		width, height,
-		lipgloss.Center, lipgloss.Center,
-		modal,
-	)
+	// Use Compositor/Layer for true overlay (background remains visible)
+	bgLayer := lipgloss.NewLayer(background)
+	modalLayer := lipgloss.NewLayer(modal)
+
+	// Center the modal
+	modalW := lipgloss.Width(modal)
+	modalH := lipgloss.Height(modal)
+	centerX := (width - modalW) / 2
+	centerY := (height - modalH) / 2
+	modalLayer.X(centerX).Y(centerY).Z(1)
+
+	compositor := lipgloss.NewCompositor(bgLayer, modalLayer)
+	return compositor.Render()
 }
 
 // Preview modal specific styles.

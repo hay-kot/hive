@@ -3,8 +3,8 @@ package tui
 import (
 	"strings"
 
-	"github.com/charmbracelet/bubbles/spinner"
-	lipgloss "github.com/charmbracelet/lipgloss/v2"
+	"charm.land/bubbles/v2/spinner"
+	lipgloss "charm.land/lipgloss/v2"
 )
 
 // Output modal layout constants.
@@ -143,11 +143,19 @@ func (m OutputModal) Overlay(background string, width, height int) string {
 
 	modal := modalStyle.Render(modalContent)
 
-	return lipgloss.Place(
-		width, height,
-		lipgloss.Center, lipgloss.Center,
-		modal,
-	)
+	// Use Compositor/Layer for true overlay (background remains visible)
+	bgLayer := lipgloss.NewLayer(background)
+	modalLayer := lipgloss.NewLayer(modal)
+
+	// Center the modal
+	modalW := lipgloss.Width(modal)
+	modalH := lipgloss.Height(modal)
+	centerX := (width - modalW) / 2
+	centerY := (height - modalH) / 2
+	modalLayer.X(centerX).Y(centerY).Z(1)
+
+	compositor := lipgloss.NewCompositor(bgLayer, modalLayer)
+	return compositor.Render()
 }
 
 // Output modal specific styles.

@@ -1,7 +1,7 @@
 package tui
 
 import (
-	lipgloss "github.com/charmbracelet/lipgloss/v2"
+	lipgloss "charm.land/lipgloss/v2"
 )
 
 // Modal represents a confirmation dialog.
@@ -68,11 +68,17 @@ func (m Modal) Overlay(background string, width, height int) string {
 
 	modal := modalStyle.Render(content)
 
-	// Use lipgloss.Place to center the modal in the full screen area
-	// This replaces the background completely (simpler approach)
-	return lipgloss.Place(
-		width, height,
-		lipgloss.Center, lipgloss.Center,
-		modal,
-	)
+	// Use Compositor/Layer for true overlay (background remains visible)
+	bgLayer := lipgloss.NewLayer(background)
+	modalLayer := lipgloss.NewLayer(modal)
+
+	// Center the modal
+	modalW := lipgloss.Width(modal)
+	modalH := lipgloss.Height(modal)
+	centerX := (width - modalW) / 2
+	centerY := (height - modalH) / 2
+	modalLayer.X(centerX).Y(centerY).Z(1)
+
+	compositor := lipgloss.NewCompositor(bgLayer, modalLayer)
+	return compositor.Render()
 }

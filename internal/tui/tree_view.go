@@ -2,12 +2,13 @@ package tui
 
 import (
 	"fmt"
+	"image/color"
 	"io"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/list"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/list"
+	tea "charm.land/bubbletea/v2"
+	lipgloss "charm.land/lipgloss/v2"
 	"github.com/hay-kot/hive/internal/core/session"
 	"github.com/hay-kot/hive/internal/integration/terminal"
 	"github.com/hay-kot/hive/pkg/kv"
@@ -36,7 +37,7 @@ const (
 
 // activeAnimationColors are the colors for a subtle pulse animation.
 // Uses a narrow range for a gentle breathing effect.
-var activeAnimationColors = []lipgloss.Color{
+var activeAnimationColors = []color.Color{
 	lipgloss.Color("#9ece6a"), // bright green (frame 0)
 	lipgloss.Color("#93c761"), // slightly dimmer
 	lipgloss.Color("#8bc058"), // dimmer

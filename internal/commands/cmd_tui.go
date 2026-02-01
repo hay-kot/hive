@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/urfave/cli/v3"
 
 	"github.com/hay-kot/hive/internal/hive"
@@ -64,7 +64,7 @@ func (cmd *TuiCmd) run(ctx context.Context, _ *cli.Command) error {
 		}
 
 		m := tui.New(cmd.flags.Service, cmd.flags.Config, opts)
-		p := tea.NewProgram(m, tea.WithAltScreen())
+		p := tea.NewProgram(m)
 
 		finalModel, err := p.Run()
 		if err != nil {
