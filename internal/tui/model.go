@@ -168,12 +168,13 @@ func New(service *hive.Service, cfg *config.Config, opts Options) Model {
 	l.SetFilteringEnabled(true)
 	l.SetShowTitle(false) // Title shown in tab bar instead
 	l.Styles.TitleBar = lipgloss.NewStyle()
-	l.FilterInput.PromptStyle = lipgloss.NewStyle().PaddingLeft(1).Foreground(colorBlue).Bold(true)
+	// Use hex colors directly for bubbles v1 compatibility (lipgloss v1 types)
+	l.FilterInput.PromptStyle = lipgloss.NewStyle().PaddingLeft(1).Foreground(lipgloss.Color("#7aa2f7")).Bold(true)
 	l.FilterInput.Prompt = "Filter: "
-	l.Styles.FilterCursor = lipgloss.NewStyle().Foreground(colorBlue)
+	l.Styles.FilterCursor = lipgloss.NewStyle().Foreground(lipgloss.Color("#7aa2f7"))
 
 	// Style help to match messages view (consistent gray, bullet separators, left padding)
-	helpStyle := lipgloss.NewStyle().Foreground(colorGray)
+	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#565f89"))
 	l.Help.Styles.ShortKey = helpStyle
 	l.Help.Styles.ShortDesc = helpStyle
 	l.Help.Styles.ShortSeparator = helpStyle
@@ -203,7 +204,7 @@ func New(service *hive.Service, cfg *config.Config, opts Options) Model {
 
 	s := spinner.New()
 	s.Spinner = spinner.Dot
-	s.Style = spinnerStyle
+	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("#7aa2f7")) // blue, lipgloss v1 for bubbles v1
 
 	// Create message view
 	msgView := NewMessagesView()

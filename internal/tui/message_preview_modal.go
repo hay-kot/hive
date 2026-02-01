@@ -8,7 +8,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/glamour/styles"
-	lipglossv1 "github.com/charmbracelet/lipgloss"
+	lipglossv1 "github.com/charmbracelet/lipgloss" // v1 required for bubbles/viewport
 	lipgloss "github.com/charmbracelet/lipgloss/v2"
 	"github.com/hay-kot/hive/internal/core/messaging"
 )
