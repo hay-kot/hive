@@ -343,11 +343,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.pending = Action{}
 			return m, nil
 		}
-		// Exit if the action requested it
-		if m.pending.Exit {
-			m.quitting = true
-			return m, tea.Quit
-		}
 		m.state = stateNormal
 		m.pending = Action{}
 		// Reload sessions after action
@@ -707,6 +702,13 @@ func (m Model) handleSessionsKey(msg tea.KeyMsg, keyStr string) (tea.Model, tea.
 		}
 		if action.Type == ActionTypeRecycle {
 			return m, m.startRecycle(action.SessionID)
+		}
+		// If exit is requested, execute synchronously and quit immediately
+		// This avoids async message flow issues in some terminal contexts (e.g., tmux popups)
+		if action.Exit {
+			_ = m.handler.Execute(context.Background(), action)
+			m.quitting = true
+			return m, tea.Quit
 		}
 		// Store pending action for exit check after completion
 		m.pending = action
