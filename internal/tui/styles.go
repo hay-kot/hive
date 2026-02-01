@@ -105,3 +105,29 @@ var (
 	gitDirtyStyle     = lipgloss.NewStyle().Foreground(colorYellow)
 	gitLoadingStyle   = lipgloss.NewStyle().Foreground(colorGray)
 )
+
+// Form field styles (Tokyo Night themed).
+var (
+	formTitleStyle = lipgloss.NewStyle().
+			Foreground(colorBlue).
+			Bold(true)
+
+	formTitleBlurredStyle = lipgloss.NewStyle().
+				Foreground(colorGray)
+
+	formFieldStyle = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(colorGray).
+			Padding(0, 1)
+
+	formFieldFocusedStyle = lipgloss.NewStyle().
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(colorBlue).
+				Padding(0, 1)
+
+	formErrorStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#f7768e")) // Tokyo Night red
+
+	formHelpStyle = lipgloss.NewStyle().
+			Foreground(colorGray)
+)

@@ -6,9 +6,9 @@ import (
 	"strings"
 
 	"charm.land/bubbles/v2/viewport"
+	lipgloss "charm.land/lipgloss/v2"
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/glamour/styles"
-	lipgloss "charm.land/lipgloss/v2"
 	"github.com/hay-kot/hive/internal/core/messaging"
 )
 

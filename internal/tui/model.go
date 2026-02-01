@@ -12,7 +12,6 @@ import (
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	lipgloss "charm.land/lipgloss/v2"
-	"github.com/charmbracelet/huh"
 	"github.com/hay-kot/hive/internal/core/config"
 	"github.com/hay-kot/hive/internal/core/messaging"
 	"github.com/hay-kot/hive/internal/core/session"
@@ -503,39 +502,33 @@ func (m Model) handleNewSessionFormKey(msg tea.KeyMsg, keyStr string) (tea.Model
 		return m, tea.Quit
 	}
 
-	// Handle esc to close dialog
-	if keyStr == "esc" {
-		m.newSessionForm.SetCancelled()
-		m.state = stateNormal
-		m.newSessionForm = nil
-		return m, nil
-	}
-
-	// Pass to form
+	// Pass all keys to the form (it handles esc internally)
 	return m.updateNewSessionForm(msg)
 }
 
 // updateNewSessionForm routes any message to the form and handles state changes.
 func (m Model) updateNewSessionForm(msg tea.Msg) (tea.Model, tea.Cmd) {
-	// Note: huh uses bubbletea v1, so we ignore its commands (incompatible with v2)
-	// The form still works for input, just without v1-specific command handling
-	form, _ := m.newSessionForm.Form().Update(msg)
-	if f, ok := form.(*huh.Form); ok {
-		m.newSessionForm.form = f
+	form, cmd := m.newSessionForm.Update(msg)
+	m.newSessionForm = &form
 
-		// Check if form completed - set pending create and exit TUI
-		if f.State == huh.StateCompleted {
-			result := m.newSessionForm.Result()
-			m.state = stateNormal
-			m.newSessionForm = nil
-			m.pendingCreate = &PendingCreate{
-				Remote: result.Repo.Remote,
-				Name:   result.SessionName,
-			}
-			return m, tea.Quit
+	if m.newSessionForm.Submitted() {
+		result := m.newSessionForm.Result()
+		m.state = stateNormal
+		m.newSessionForm = nil
+		m.pendingCreate = &PendingCreate{
+			Remote: result.Repo.Remote,
+			Name:   result.SessionName,
 		}
+		return m, tea.Quit
 	}
-	return m, nil
+
+	if m.newSessionForm.Cancelled() {
+		m.state = stateNormal
+		m.newSessionForm = nil
+		return m, nil
+	}
+
+	return m, cmd
 }
 
 // handleRecycleModalKey handles keys when recycle modal is shown.
@@ -737,10 +730,7 @@ func (m Model) handleSessionsKey(msg tea.KeyMsg, keyStr string) (tea.Model, tea.
 		}
 		m.newSessionForm = NewNewSessionForm(m.discoveredRepos, preselectedRemote, existingNames)
 		m.state = stateCreatingSession
-		// Note: huh uses bubbletea v1, so we can't use its Init() command directly
-		// The form will still work, just without v1-specific initialization
-		_ = m.newSessionForm.Form().Init()
-		return m, nil
+		return m, m.newSessionForm.Init()
 	}
 
 	selected := m.selectedSession()
