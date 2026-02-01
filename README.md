@@ -329,7 +329,7 @@ alias hv="tmux new-session -As hive hive"
 
 This project was heavily inspired by [agent-deck](https://github.com/asheshgoplani/agent-deck) by Ashesh Goplani. Several concepts and code patterns were adapted from their work. Thanks to the agent-deck team for open-sourcing their project under the MIT license.
 
-**Disclaimer:** The majority of this codebase was vibe-coded with AI assistance. Use at your own risk, but it works on my machine.
+**Disclaimer:** The majority of this codebase was vibe-coded with AI assistance. Use at your own risk.
 
 ## Dependencies
 
