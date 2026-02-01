@@ -12,6 +12,7 @@ import (
 type DoctorCmd struct {
 	flags  *Flags
 	format string
+	fix    bool
 }
 
 func NewDoctorCmd(flags *Flags) *DoctorCmd {
@@ -31,6 +32,11 @@ func (cmd *DoctorCmd) Register(app *cli.Command) *cli.Command {
 				Value:       "text",
 				Destination: &cmd.format,
 			},
+			&cli.BoolFlag{
+				Name:        "fix",
+				Usage:       "attempt to fix issues (e.g., delete orphaned worktrees)",
+				Destination: &cmd.fix,
+			},
 		},
 		Action: cmd.run,
 	})
@@ -40,6 +46,7 @@ func (cmd *DoctorCmd) Register(app *cli.Command) *cli.Command {
 func (cmd *DoctorCmd) run(ctx context.Context, c *cli.Command) error {
 	checks := []doctor.Check{
 		doctor.NewConfigCheck(cmd.flags.Config, cmd.flags.ConfigPath),
+		doctor.NewOrphanCheck(cmd.flags.Store, cmd.flags.Config.ReposDir(), cmd.fix),
 	}
 
 	results := doctor.RunAll(ctx, checks)
