@@ -158,6 +158,9 @@ func (d *Detector) NeedsApproval(content string) bool {
 		// AskUserQuestion / interactive question UI
 		"Use arrow keys to navigate",
 		"Press Enter to select",
+		// Generic approval prompts
+		"Allow this action",
+		"Do you want to proceed?",
 	}
 	for _, prompt := range permissionPrompts {
 		if strings.Contains(recentContent, prompt) {
