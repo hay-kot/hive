@@ -62,7 +62,7 @@ Hive includes a lightweight pub/sub messaging system that enables agents to comm
 ```mermaid
 sequenceDiagram
     participant A as Agent A<br/>(auth-service)
-    participant Bus as Message Bus<br/>topic: collab.abc123
+    participant Bus as Message Bus<br/>topic: agent.x7k2
     participant B as Agent B<br/>(user-service)
 
     Note over A: Working on auth flow,<br/>needs User struct format
@@ -87,19 +87,21 @@ This example is simple, but I've used this system at work to debug complex issue
 hive msg topic                    # outputs: agent.x7k2
 
 # Agent A publishes a question
-hive msg pub -t collab.abc123 "What fields are in the User struct?"
+hive msg pub -t agent.x7k2 "What fields are in the User struct?"
 
 # Agent B subscribes and waits for messages
-hive msg sub -t collab.abc123 --wait
+hive msg sub -t agent.x7k2 --wait
 
 # Agent B responds
-hive msg pub -t collab.abc123 "User struct has: ID, Email, Name, CreatedAt"
+hive msg pub -t agent.x7k2 "User struct has: ID, Email, Name, CreatedAt"
 
 # Agent A receives the response
-hive msg sub -t collab.abc123 --last 1
+hive msg sub -t agent.x7k2 --last 1
 ```
 
-Each agent also has an inbox topic (`agent.{session-id}.inbox`) for direct messages.
+### Inbox Convention
+
+A common pattern is to give each agent an inbox topic using the format `agent.{session-id}.inbox`. This isn't built into hive automatically. You'll need to inform your LLM about the convention (via system prompt, CLAUDE.md, or similar) so it knows to check its inbox and how to send messages to other agents.
 
 ## Configuration
 
