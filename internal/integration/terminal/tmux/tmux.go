@@ -18,18 +18,19 @@ type Integration struct {
 	mu        sync.RWMutex
 	cache     map[string]sessionCache // session_name -> cache entry
 	cacheTime time.Time
+	trackers  map[string]*terminal.StateTracker // session_name -> state tracker
 }
 
 type sessionCache struct {
-	workDir      string
-	activity     int64
-	prevActivity int64 // activity from previous refresh
+	workDir  string
+	activity int64
 }
 
 // New creates a new tmux integration.
 func New() *Integration {
 	return &Integration{
-		cache: make(map[string]sessionCache),
+		cache:    make(map[string]sessionCache),
+		trackers: make(map[string]*terminal.StateTracker),
 	}
 }
 
@@ -79,10 +80,6 @@ func (t *Integration) RefreshCache() {
 
 		// Keep maximum activity if session has multiple windows
 		if existing, ok := newCache[name]; !ok || entry.activity > existing.activity {
-			// Preserve previous activity from old cache
-			if old, ok := t.cache[name]; ok {
-				entry.prevActivity = old.activity
-			}
 			newCache[name] = entry
 		}
 	}
@@ -147,10 +144,6 @@ func (t *Integration) GetStatus(ctx context.Context, info *terminal.SessionInfo)
 		return terminal.StatusMissing, nil
 	}
 
-	// Set activity info on SessionInfo
-	info.LastActivity = cached.activity
-	info.HasActivity = cached.activity != cached.prevActivity
-
 	// Capture pane content
 	content, err := t.capturePane(ctx, info.Name, info.Pane)
 	if err != nil {
@@ -164,9 +157,18 @@ func (t *Integration) GetStatus(ctx context.Context, info *terminal.SessionInfo)
 		info.DetectedTool = tool
 	}
 
-	// Use detector to determine status, passing activity info
+	// Get or create state tracker for this session
+	t.mu.Lock()
+	tracker, ok := t.trackers[info.Name]
+	if !ok {
+		tracker = terminal.NewStateTracker()
+		t.trackers[info.Name] = tracker
+	}
+	t.mu.Unlock()
+
+	// Use state tracker to determine status with spike detection
 	detector := terminal.NewDetector(tool)
-	return detector.DetectStatus(content, info.LastActivity, info.HasActivity), nil
+	return tracker.Update(content, cached.activity, detector), nil
 }
 
 // capturePane captures the content of a tmux pane.

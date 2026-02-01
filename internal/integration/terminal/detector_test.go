@@ -194,12 +194,10 @@ func TestDetector_IsWaiting(t *testing.T) {
 
 func TestDetector_DetectStatus(t *testing.T) {
 	tests := []struct {
-		name         string
-		tool         string
-		content      string
-		lastActivity int64
-		hasActivity  bool
-		want         Status
+		name    string
+		tool    string
+		content string
+		want    Status
 	}{
 		{
 			name:    "active - spinner",
@@ -231,18 +229,12 @@ func TestDetector_DetectStatus(t *testing.T) {
 			content: "Here is the result:\nfunction foo() {}",
 			want:    StatusIdle,
 		},
-		{
-			name:    "waiting - prompt character",
-			tool:    "claude",
-			content: "Done.\n❯",
-			want:    StatusWaiting,
-		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			d := NewDetector(tt.tool)
-			if got := d.DetectStatus(tt.content, tt.lastActivity, tt.hasActivity); got != tt.want {
+			if got := d.DetectStatus(tt.content); got != tt.want {
 				t.Errorf("DetectStatus() = %v, want %v", got, tt.want)
 			}
 		})

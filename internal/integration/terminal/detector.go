@@ -238,22 +238,15 @@ func (d *Detector) IsWaiting(content string) bool {
 	return false
 }
 
-// DetectStatus returns the detected status based on terminal content.
-// Activity parameters are kept for API compatibility but not used -
-// content-based detection is more reliable than activity timestamps
-// which can trigger on cursor blinks, scrolling, etc.
-func (d *Detector) DetectStatus(content string, lastActivity int64, hasActivity bool) Status {
-	// Unused parameters kept for API compatibility
-	_ = lastActivity
-	_ = hasActivity
-
+// DetectStatus returns the detected status based on terminal content alone.
+// For more accurate detection with spike filtering, use StateTracker.Update().
+func (d *Detector) DetectStatus(content string) Status {
 	if d.IsBusy(content) {
 		return StatusActive
 	}
 	if d.IsWaiting(content) {
 		return StatusWaiting
 	}
-
 	return StatusIdle
 }
 
