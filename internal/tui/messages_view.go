@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/hay-kot/hive/internal/core/messaging"
@@ -197,11 +198,13 @@ func (v *MessagesView) View() string {
 	var b strings.Builder
 
 	// Column widths (defined early for header and content)
-	timeWidth := 8    // "14:32:01"
-	topicWidth := 10  // "[topic    ]"
-	senderWidth := 16 // right-aligned sender
-	padding := 4      // spaces between columns
-	contentWidth := v.width - timeWidth - topicWidth - senderWidth - padding - 4
+	// Order: Time | Sender | Topic | Message | Age
+	timeWidth := 8     // "14:32:01"
+	senderWidth := 14  // "agent.XXXX" format
+	topicWidth := 14   // topic name
+	ageWidth := 4      // "2m", "1h", "3d"
+	padding := 5       // spaces between columns
+	contentWidth := v.width - timeWidth - senderWidth - topicWidth - ageWidth - padding - 4
 
 	if contentWidth < 20 {
 		contentWidth = 20
@@ -222,14 +225,15 @@ func (v *MessagesView) View() string {
 		b.WriteString("\n")
 	}
 
-	// Column headers
+	// Column headers (Time | Sender | Topic | Message | Age)
 	headerStyle := lipgloss.NewStyle().Foreground(colorGray)
 	timeHeader := fmt.Sprintf("%-*s", timeWidth, "Time")
+	senderHeader := fmt.Sprintf("%-*s", senderWidth, "Sender")
 	topicHeader := fmt.Sprintf("%-*s", topicWidth, "Topic")
 	msgHeader := fmt.Sprintf("%-*s", contentWidth, "Message")
-	senderHeader := fmt.Sprintf("%*s", senderWidth, "Sender")
+	ageHeader := fmt.Sprintf("%*s", ageWidth, "Age")
 	b.WriteString("  ") // align with content (selection indicator space)
-	b.WriteString(headerStyle.Render(timeHeader + " " + topicHeader + " " + msgHeader + senderHeader))
+	b.WriteString(headerStyle.Render(timeHeader + " " + senderHeader + " " + topicHeader + " " + msgHeader + " " + ageHeader))
 	b.WriteString("\n")
 
 	// Track lines rendered for padding calculation
@@ -260,7 +264,7 @@ func (v *MessagesView) View() string {
 			msg := &v.messages[msgIdx]
 			isSelected := i == v.cursor
 
-			line := v.renderMessageLine(msg, isSelected, timeWidth, topicWidth, contentWidth, senderWidth)
+			line := v.renderMessageLine(msg, isSelected, timeWidth, senderWidth, topicWidth, contentWidth, ageWidth)
 			b.WriteString(line)
 			b.WriteString("\n")
 			linesRendered++
@@ -281,8 +285,8 @@ func (v *MessagesView) View() string {
 }
 
 // renderMessageLine renders a single message line in compact format.
-// Format: timestamp [topic    ] message_preview...               sender
-func (v *MessagesView) renderMessageLine(msg *messaging.Message, selected bool, _, topicW, contentW, senderW int) string {
+// Format: timestamp [sender] [topic] message_preview... age
+func (v *MessagesView) renderMessageLine(msg *messaging.Message, selected bool, _, senderW, topicW, contentW, ageW int) string {
 	var b strings.Builder
 
 	// Selection indicator
@@ -299,23 +303,37 @@ func (v *MessagesView) renderMessageLine(msg *messaging.Message, selected bool, 
 	b.WriteString(timeStyle.Render(timeStr))
 	b.WriteString(" ")
 
-	// Topic (with color hashing, fixed width, left-aligned inside brackets)
+	// Sender (with color hashing, fixed width, in brackets)
+	sender := msg.Sender
+	if sender == "" {
+		sender = "unknown"
+	}
+	if len(sender) > senderW-2 { // -2 for brackets
+		sender = sender[:senderW-3] + "…"
+	}
+	senderColor := ColorForString(sender)
+	senderStyle := lipgloss.NewStyle().Foreground(senderColor)
+	senderPadded := fmt.Sprintf("[%-*s]", senderW-2, sender)
+	b.WriteString(senderStyle.Render(senderPadded))
+	b.WriteString(" ")
+
+	// Topic (with color hashing, fixed width, in brackets)
 	topicColor := ColorForString(msg.Topic)
 	topicStyle := lipgloss.NewStyle().Foreground(topicColor)
 	topic := msg.Topic
 	if len(topic) > topicW-2 { // -2 for brackets
-		topic = topic[:topicW-2]
+		topic = topic[:topicW-3] + "…"
 	}
 	topicPadded := fmt.Sprintf("[%-*s]", topicW-2, topic)
 	b.WriteString(topicStyle.Render(topicPadded))
 	b.WriteString(" ")
 
-	// Message preview (truncated, fills available space)
+	// Message preview (truncated, fills remaining space)
 	payload := strings.ReplaceAll(msg.Payload, "\n", " ")
 	payload = strings.ReplaceAll(payload, "\t", " ")
 	payloadRunes := []rune(payload)
-	if len(payloadRunes) > contentW-3 {
-		payload = string(payloadRunes[:contentW-3]) + "…"
+	if len(payloadRunes) > contentW-1 {
+		payload = string(payloadRunes[:contentW-1]) + "…"
 	}
 	payloadStyle := lipgloss.NewStyle().Foreground(colorWhite)
 	if selected {
@@ -324,19 +342,28 @@ func (v *MessagesView) renderMessageLine(msg *messaging.Message, selected bool, 
 	// Pad payload to fill content width
 	payloadPadded := fmt.Sprintf("%-*s", contentW, payload)
 	b.WriteString(payloadStyle.Render(payloadPadded))
+	b.WriteString(" ")
 
-	// Sender (right-aligned, with color hashing)
-	sender := msg.Sender
-	if sender == "" {
-		sender = "unknown"
-	}
-	if len(sender) > senderW {
-		sender = sender[:senderW-1] + "…"
-	}
-	senderColor := ColorForString(sender)
-	senderStyle := lipgloss.NewStyle().Foreground(senderColor)
-	senderPadded := fmt.Sprintf("%*s", senderW, sender)
-	b.WriteString(senderStyle.Render(senderPadded))
+	// Age (right-aligned, provides visual end cap)
+	age := formatAge(msg.CreatedAt)
+	ageStyle := lipgloss.NewStyle().Foreground(colorGray)
+	agePadded := fmt.Sprintf("%*s", ageW, age)
+	b.WriteString(ageStyle.Render(agePadded))
 
 	return b.String()
+}
+
+// formatAge returns a human-readable relative time string.
+func formatAge(t time.Time) string {
+	d := time.Since(t)
+	switch {
+	case d < time.Minute:
+		return fmt.Sprintf("%ds", int(d.Seconds()))
+	case d < time.Hour:
+		return fmt.Sprintf("%dm", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%dh", int(d.Hours()))
+	default:
+		return fmt.Sprintf("%dd", int(d.Hours()/24))
+	}
 }
