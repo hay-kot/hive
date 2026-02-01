@@ -54,14 +54,15 @@ func NewNewSessionForm(repos []DiscoveredRepo, preselectedRemote string, existin
 
 	// Create text input for session name
 	nameInput := textinput.New()
-	nameInput.Placeholder = "Enter session name..."
+	nameInput.Placeholder = "my-feature-branch"
 	nameInput.CharLimit = 64
+	nameInput.Prompt = "" // No prompt prefix
 
 	// Style the input
 	styles := textinput.DefaultStyles(true)
-	styles.Focused.Prompt = lipgloss.NewStyle().Foreground(colorBlue)
-	styles.Blurred.Prompt = lipgloss.NewStyle().Foreground(colorGray)
 	styles.Cursor.Color = colorBlue
+	styles.Focused.Placeholder = lipgloss.NewStyle().Foreground(colorGray)
+	styles.Blurred.Placeholder = lipgloss.NewStyle().Foreground(colorGray)
 	nameInput.SetStyles(styles)
 
 	return &NewSessionForm{
@@ -185,37 +186,34 @@ func (f *NewSessionForm) Result() NewSessionFormResult {
 
 // View renders the form.
 func (f *NewSessionForm) View() string {
-	// Repo select
+	// Repo select (already has title integrated)
 	repoView := f.repoSelect.View()
 
-	// Name input with title and optional error
+	// Name input section - title integrated into bordered area
 	nameTitleStyle := formTitleBlurredStyle
 	if f.focusedField == 1 {
 		nameTitleStyle = formTitleStyle
 	}
 	nameTitle := nameTitleStyle.Render("Session Name")
 
-	// Input field with left border indicator
+	// Build content: title + input (+ error if present)
+	nameContent := lipgloss.JoinVertical(lipgloss.Left, nameTitle, f.nameInput.View())
+
+	// Add error inside the bordered area if present
+	if f.nameError != "" {
+		errorView := formErrorStyle.Render(f.nameError)
+		nameContent = lipgloss.JoinVertical(lipgloss.Left, nameContent, errorView)
+	}
+
+	// Apply border style
 	inputBorderStyle := formFieldStyle
 	if f.focusedField == 1 {
 		inputBorderStyle = formFieldFocusedStyle
 	}
-	inputField := inputBorderStyle.Render(f.nameInput.View())
-
-	// Error message if present
-	var errorView string
-	if f.nameError != "" {
-		errorView = formErrorStyle.PaddingLeft(2).Render(f.nameError)
-	}
+	nameSection := inputBorderStyle.Render(nameContent)
 
 	// Help text
 	helpText := formHelpStyle.Render("tab: switch fields • enter: submit • esc: cancel")
-
-	// Combine all elements
-	nameSection := lipgloss.JoinVertical(lipgloss.Left, nameTitle, inputField)
-	if errorView != "" {
-		nameSection = lipgloss.JoinVertical(lipgloss.Left, nameSection, errorView)
-	}
 
 	return lipgloss.JoinVertical(
 		lipgloss.Left,

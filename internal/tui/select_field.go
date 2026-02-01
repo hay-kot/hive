@@ -154,12 +154,15 @@ func (s *SelectField) KeyMap() []key.Binding {
 
 // View renders the select field.
 func (s SelectField) View() string {
-	// Title
+	// Title style based on focus
 	titleStyle := formTitleBlurredStyle
 	if s.focused {
 		titleStyle = formTitleStyle
 	}
 	title := titleStyle.Render(s.title)
+
+	// Content: title + list (list.View() includes filter when active)
+	content := lipgloss.JoinVertical(lipgloss.Left, title, s.list.View())
 
 	// Border style based on focus (left border only)
 	borderStyle := formFieldStyle
@@ -167,10 +170,5 @@ func (s SelectField) View() string {
 		borderStyle = formFieldFocusedStyle
 	}
 
-	// List content - trim trailing whitespace from list view
-	listView := s.list.View()
-
-	content := borderStyle.Render(listView)
-
-	return lipgloss.JoinVertical(lipgloss.Left, title, content)
+	return borderStyle.Render(content)
 }
