@@ -22,8 +22,8 @@ const (
 // Status indicators for sessions.
 const (
 	statusActive   = "[●]" // green - agent actively working
-	statusWaiting  = "[!]" // yellow - needs user input
-	statusIdle     = "[ ]" // gray - done/acknowledged
+	statusApproval = "[!]" // yellow - needs approval/permission
+	statusReady    = "[>]" // cyan - ready for next input
 	statusUnknown  = "[?]" // dim - no terminal found
 	statusRecycled = "[○]" // gray - session recycled
 )
@@ -69,19 +69,19 @@ func renderStatusIndicator(state session.State, termStatus *TerminalStatus, styl
 		switch termStatus.Status {
 		case terminal.StatusActive:
 			return renderActiveIndicator(animFrame)
-		case terminal.StatusWaiting:
-			return styles.StatusWaiting.Render(statusWaiting)
-		case terminal.StatusIdle:
-			return styles.StatusIdle.Render(statusIdle)
+		case terminal.StatusApproval:
+			return styles.StatusApproval.Render(statusApproval)
+		case terminal.StatusReady:
+			return styles.StatusReady.Render(statusReady)
 		case terminal.StatusMissing:
 			return styles.StatusUnknown.Render(statusUnknown)
 		}
 	}
 
-	// Default: active session without terminal status shows as idle
+	// Default: active session without terminal status shows as ready
 	// We only show active (green) when we have positive confirmation of activity
 	if state == session.StateActive {
-		return styles.StatusIdle.Render(statusIdle)
+		return styles.StatusReady.Render(statusReady)
 	}
 
 	return styles.StatusRecycled.Render(statusRecycled)
@@ -168,8 +168,8 @@ type TreeDelegateStyles struct {
 	SessionBranch  lipgloss.Style
 	SessionID      lipgloss.Style
 	StatusActive   lipgloss.Style
-	StatusWaiting  lipgloss.Style
-	StatusIdle     lipgloss.Style
+	StatusApproval lipgloss.Style
+	StatusReady    lipgloss.Style
 	StatusUnknown  lipgloss.Style
 	StatusRecycled lipgloss.Style
 
@@ -192,8 +192,8 @@ func DefaultTreeDelegateStyles() TreeDelegateStyles {
 		SessionBranch:  lipgloss.NewStyle().Foreground(colorGray),
 		SessionID:      lipgloss.NewStyle().Foreground(lipgloss.Color("#bb9af7")), // purple
 		StatusActive:   lipgloss.NewStyle().Foreground(colorGreen),
-		StatusWaiting:  lipgloss.NewStyle().Foreground(colorYellow),
-		StatusIdle:     lipgloss.NewStyle().Foreground(colorGray),
+		StatusApproval: lipgloss.NewStyle().Foreground(colorYellow),
+		StatusReady:    lipgloss.NewStyle().Foreground(colorCyan),
 		StatusUnknown:  lipgloss.NewStyle().Foreground(colorGray).Faint(true),
 		StatusRecycled: lipgloss.NewStyle().Foreground(colorGray),
 

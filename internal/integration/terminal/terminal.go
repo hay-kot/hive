@@ -7,14 +7,11 @@ import "context"
 type Status string
 
 const (
-	StatusActive  Status = "active"  // agent is actively working (spinner/busy indicator)
-	StatusWaiting Status = "waiting" // agent needs user input (prompt detected)
-	StatusIdle    Status = "idle"    // agent is done/acknowledged
-	StatusMissing Status = "missing" // terminal session not found
+	StatusActive   Status = "active"   // agent is actively working (spinner/busy indicator)
+	StatusApproval Status = "approval" // agent needs permission (Yes/No dialog)
+	StatusReady    Status = "ready"    // agent finished, waiting for next input (❯ prompt)
+	StatusMissing  Status = "missing"  // terminal session not found
 )
-
-// Metadata key for persisting acknowledged state in session.Metadata.
-const MetaAcknowledged = "terminal_acknowledged"
 
 // SessionInfo holds information about a discovered terminal session.
 type SessionInfo struct {
@@ -22,7 +19,6 @@ type SessionInfo struct {
 	Pane         string // pane identifier if applicable
 	Status       Status // current detected status
 	DetectedTool string // detected AI tool (claude, gemini, etc.)
-	Acknowledged bool   // whether user has seen this session (from persisted state)
 }
 
 // Integration defines the interface for terminal multiplexer integrations.
@@ -43,8 +39,4 @@ type Integration interface {
 
 	// GetStatus returns the current status of a previously discovered session.
 	GetStatus(ctx context.Context, info *SessionInfo) (Status, error)
-
-	// Acknowledge marks a session as seen by the user.
-	// Transitions waiting → idle. Call when user views/attaches to the session.
-	Acknowledge(ctx context.Context, info *SessionInfo) error
 }

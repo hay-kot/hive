@@ -79,16 +79,3 @@ func (m *Manager) DiscoverSession(ctx context.Context, slug string, metadata map
 func (m *Manager) HasEnabledIntegrations() bool {
 	return len(m.EnabledIntegrations()) > 0
 }
-
-// AcknowledgeSession marks a session as seen by the user.
-// Discovers the session and calls Acknowledge on the appropriate integration.
-func (m *Manager) AcknowledgeSession(ctx context.Context, slug string, metadata map[string]string) error {
-	info, integration, err := m.DiscoverSession(ctx, slug, metadata)
-	if err != nil {
-		return err
-	}
-	if info == nil || integration == nil {
-		return nil // Session not found, nothing to acknowledge
-	}
-	return integration.Acknowledge(ctx, info)
-}

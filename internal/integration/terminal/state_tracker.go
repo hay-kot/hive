@@ -12,18 +12,13 @@ import (
 // Implements spike detection to filter cursor blinks and terminal redraws.
 //
 // Three-state model:
-//   - GREEN (active)  = Explicit busy indicator found (spinner, "ctrl+c to interrupt")
-//   - YELLOW (waiting) = Prompt detected, needs user input
-//   - GRAY (idle)     = No busy indicator, no prompt, AND user has acknowledged
+//   - GREEN (active)   = Explicit busy indicator found (spinner, "ctrl+c to interrupt")
+//   - YELLOW (approval) = Permission dialog detected, needs user decision
+//   - CYAN (ready)     = Input prompt detected, ready for next task
 type StateTracker struct {
 	// Content tracking
 	lastHash       string    // SHA256 of normalized content
 	lastChangeTime time.Time // When sustained activity was last confirmed
-
-	// Acknowledge tracking: distinguishes idle (user saw) from waiting (needs attention)
-	acknowledged   bool      // User has seen this state (yellow vs gray)
-	acknowledgedAt time.Time // When acknowledged was set (for grace period)
-	waitingSince   time.Time // When session transitioned to waiting status
 
 	// Activity timestamp tracking (from tmux window_activity)
 	lastActivityTimestamp int64 // Previous activity timestamp
@@ -40,93 +35,53 @@ type StateTracker struct {
 // SpikeWindow is how long we wait to confirm sustained activity.
 const SpikeWindow = 1 * time.Second
 
-// NewStateTracker creates a new state tracker with initial acknowledged state.
-// If acknowledged is true, starts as idle. Otherwise starts as waiting.
-func NewStateTracker(acknowledged bool) *StateTracker {
-	st := &StateTracker{
-		acknowledged:   acknowledged,
-		acknowledgedAt: time.Now(),
+// NewStateTracker creates a new state tracker.
+func NewStateTracker() *StateTracker {
+	return &StateTracker{
+		lastStableStatus: StatusReady,
 	}
-	if acknowledged {
-		st.lastStableStatus = StatusIdle
-	} else {
-		st.lastStableStatus = StatusWaiting
-		st.waitingSince = time.Now()
-	}
-	return st
-}
-
-// Acknowledge marks the session as seen by the user.
-// Transitions waiting → idle.
-func (st *StateTracker) Acknowledge() {
-	st.acknowledged = true
-	st.acknowledgedAt = time.Now()
-	st.lastStableStatus = StatusIdle
-}
-
-// ResetAcknowledged marks the session as needing attention.
-// Called when new activity detected or prompt appears.
-// Transitions idle → waiting.
-func (st *StateTracker) ResetAcknowledged() {
-	st.acknowledged = false
-	st.waitingSince = time.Now()
-	st.lastStableStatus = StatusWaiting
-}
-
-// IsAcknowledged returns whether the user has seen the current state.
-func (st *StateTracker) IsAcknowledged() bool {
-	return st.acknowledged
-}
-
-// WaitingSince returns when the session became waiting.
-func (st *StateTracker) WaitingSince() time.Time {
-	return st.waitingSince
 }
 
 // Update processes new activity data and returns the detected status.
 // content is the terminal content (for busy/prompt detection).
 // activityTS is the tmux window_activity timestamp.
-// detector is used to check busy/waiting patterns.
+// detector is used to check busy/approval/ready patterns.
 func (st *StateTracker) Update(content string, activityTS int64, detector *Detector) Status {
 	now := time.Now()
 
-	// Check for explicit busy indicator (most reliable)
+	// Check for explicit indicators (most reliable)
 	isBusy := detector.IsBusy(content)
-	isWaiting := detector.IsWaiting(content)
+	needsApproval := detector.NeedsApproval(content)
+	isReady := detector.IsReady(content)
 
-	// Explicit busy indicator = definitely active
-	// Reset acknowledged since new activity detected
-	if isBusy && !isWaiting {
+	// Approval takes highest priority (Claude is blocked)
+	if needsApproval {
+		st.lastStableStatus = StatusApproval
+		st.resetSpikeDetection()
+		return StatusApproval
+	}
+
+	// Busy indicator = definitely active
+	if isBusy {
 		st.lastChangeTime = now
-		st.acknowledged = false
 		st.lastStableStatus = StatusActive
 		st.resetSpikeDetection()
 		return StatusActive
 	}
 
-	// Prompt takes priority over busy (Claude can show spinner with question UI)
-	if isWaiting {
-		// Reset acknowledged - needs user attention
-		st.acknowledged = false
-		if st.lastStableStatus != StatusWaiting {
-			st.waitingSince = now
-		}
-		st.lastStableStatus = StatusWaiting
+	// Ready (prompt visible)
+	if isReady {
+		st.lastStableStatus = StatusReady
 		st.resetSpikeDetection()
-		return StatusWaiting
+		return StatusReady
 	}
 
 	// No explicit indicators - use spike detection on activity timestamp
 	if st.lastActivityTimestamp == 0 {
-		// First poll - initialize and return waiting (not idle) until acknowledged
+		// First poll - initialize
 		st.lastActivityTimestamp = activityTS
-		if st.acknowledged {
-			st.lastStableStatus = StatusIdle
-			return StatusIdle
-		}
-		st.lastStableStatus = StatusWaiting
-		st.waitingSince = now
-		return StatusWaiting
+		st.lastStableStatus = StatusReady
+		return StatusReady
 	}
 
 	// Activity timestamp changed
@@ -150,7 +105,6 @@ func (st *StateTracker) Update(content string, activityTS int64, detector *Detec
 				// Only go green if we also detect busy indicator
 				if isBusy {
 					st.lastChangeTime = now
-					st.acknowledged = false
 					st.lastStableStatus = StatusActive
 					st.resetSpikeDetection()
 					return StatusActive
@@ -177,19 +131,9 @@ func (st *StateTracker) Update(content string, activityTS int64, detector *Detec
 		return st.lastStableStatus
 	}
 
-	// No activity, no busy indicator, no prompt
-	// Return idle only if acknowledged, otherwise waiting
-	if st.acknowledged {
-		st.lastStableStatus = StatusIdle
-		return StatusIdle
-	}
-
-	// Not acknowledged = still needs attention
-	if st.lastStableStatus != StatusWaiting {
-		st.waitingSince = now
-	}
-	st.lastStableStatus = StatusWaiting
-	return StatusWaiting
+	// Default to ready
+	st.lastStableStatus = StatusReady
+	return StatusReady
 }
 
 // resetSpikeDetection clears the spike detection window.

@@ -12,6 +12,7 @@ var (
 	colorGreen  = styles.ColorGreen
 	colorYellow = styles.ColorYellow
 	colorBlue   = styles.ColorBlue
+	colorCyan   = lipgloss.Color("#7dcfff") // cyan for ready status
 	colorGray   = styles.ColorGray
 	colorWhite  = styles.ColorWhite
 )

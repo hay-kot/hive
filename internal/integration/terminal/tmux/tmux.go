@@ -161,8 +161,7 @@ func (t *Integration) GetStatus(ctx context.Context, info *terminal.SessionInfo)
 	t.mu.Lock()
 	tracker, ok := t.trackers[info.Name]
 	if !ok {
-		// Initialize with persisted acknowledged state from SessionInfo
-		tracker = terminal.NewStateTracker(info.Acknowledged)
+		tracker = terminal.NewStateTracker()
 		t.trackers[info.Name] = tracker
 	}
 	t.mu.Unlock()
@@ -188,22 +187,6 @@ func (t *Integration) capturePane(_ context.Context, sessionName, pane string) (
 	}
 
 	return string(output), nil
-}
-
-// Acknowledge marks a session as seen by the user.
-func (t *Integration) Acknowledge(_ context.Context, info *terminal.SessionInfo) error {
-	if info == nil {
-		return nil
-	}
-
-	t.mu.Lock()
-	defer t.mu.Unlock()
-
-	if tracker, ok := t.trackers[info.Name]; ok {
-		tracker.Acknowledge()
-	}
-
-	return nil
 }
 
 // Ensure Integration implements terminal.Integration.

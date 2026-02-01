@@ -118,9 +118,9 @@ func isBoxDrawingChar(r rune) bool {
 		r == '┼' || r == '╭' || r == '╰' || r == '╮' || r == '╯'
 }
 
-// IsWaiting returns true if the terminal content indicates the agent needs user input.
-func (d *Detector) IsWaiting(content string) bool {
-	// If busy, not waiting
+// NeedsApproval returns true if the terminal shows a permission/approval dialog.
+// This is HIGH URGENCY - Claude is blocked waiting for user decision.
+func (d *Detector) NeedsApproval(content string) bool {
 	if d.IsBusy(content) {
 		return false
 	}
@@ -141,7 +141,7 @@ func (d *Detector) IsWaiting(content string) bool {
 		"│ Do you want",
 		"│ Would you like",
 		"│ Allow",
-		// Selection indicators
+		// Selection indicators for permission dialogs
 		"❯ Yes",
 		"❯ No",
 		"❯ Allow",
@@ -165,6 +165,36 @@ func (d *Detector) IsWaiting(content string) bool {
 		}
 	}
 
+	// Yes/No confirmation prompts
+	confirmPatterns := []string{
+		"(Y/n)", "[Y/n]", "(y/N)", "[y/N]",
+		"(yes/no)", "[yes/no]",
+		"Continue?", "Proceed?",
+		"Approve this plan?",
+		"Execute plan?",
+	}
+	for _, pattern := range confirmPatterns {
+		if strings.Contains(recentContent, pattern) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// IsReady returns true if the terminal shows an input prompt (Claude finished, waiting for next task).
+// This is LOW URGENCY - just ready for more work.
+func (d *Detector) IsReady(content string) bool {
+	if d.IsBusy(content) {
+		return false
+	}
+	// Approval takes priority
+	if d.NeedsApproval(content) {
+		return false
+	}
+
+	lines := getLastNonEmptyLines(content, 15)
+
 	// Check for standalone prompt character in last few lines
 	// Claude Code's UI has status bar AFTER the prompt, so check multiple lines
 	checkLines := lines
@@ -187,54 +217,6 @@ func (d *Detector) IsWaiting(content string) bool {
 		}
 	}
 
-	// Yes/No confirmation prompts
-	confirmPatterns := []string{
-		"(Y/n)", "[Y/n]", "(y/N)", "[y/N]",
-		"(yes/no)", "[yes/no]",
-		"Continue?", "Proceed?",
-		"Approve this plan?",
-		"Execute plan?",
-	}
-	for _, pattern := range confirmPatterns {
-		if strings.Contains(recentContent, pattern) {
-			return true
-		}
-	}
-
-	// Check for completion indicators combined with prompt
-	// When Claude finishes, it shows summary and waits for next input
-	completionIndicators := []string{
-		"task completed",
-		"done!",
-		"finished",
-		"what would you like",
-		"what else",
-		"anything else",
-		"let me know if",
-	}
-	recentLower := strings.ToLower(recentContent)
-	hasCompletion := false
-	for _, indicator := range completionIndicators {
-		if strings.Contains(recentLower, indicator) {
-			hasCompletion = true
-			break
-		}
-	}
-	if hasCompletion {
-		// Check if there's a prompt nearby
-		last3 := lines
-		if len(last3) > 3 {
-			last3 = last3[len(last3)-3:]
-		}
-		for _, line := range last3 {
-			cleanLine := strings.TrimSpace(stripANSI(line))
-			cleanLine = strings.ReplaceAll(cleanLine, "\u00A0", " ")
-			if cleanLine == ">" || cleanLine == "❯" || cleanLine == "> " || cleanLine == "❯ " {
-				return true
-			}
-		}
-	}
-
 	return false
 }
 
@@ -244,10 +226,14 @@ func (d *Detector) DetectStatus(content string) Status {
 	if d.IsBusy(content) {
 		return StatusActive
 	}
-	if d.IsWaiting(content) {
-		return StatusWaiting
+	if d.NeedsApproval(content) {
+		return StatusApproval
 	}
-	return StatusIdle
+	if d.IsReady(content) {
+		return StatusReady
+	}
+	// Default to ready if we can't detect anything specific
+	return StatusReady
 }
 
 // DetectTool attempts to identify the AI tool from terminal content.

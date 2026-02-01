@@ -89,7 +89,7 @@ func TestDetector_IsBusy(t *testing.T) {
 	}
 }
 
-func TestDetector_IsWaiting(t *testing.T) {
+func TestDetector_NeedsApproval(t *testing.T) {
 	tests := []struct {
 		name    string
 		tool    string
@@ -109,18 +109,6 @@ func TestDetector_IsWaiting(t *testing.T) {
 			want:    true,
 		},
 		{
-			name:    "standalone prompt character",
-			tool:    "claude",
-			content: "Previous output\n❯",
-			want:    true,
-		},
-		{
-			name:    "standalone > prompt",
-			tool:    "claude",
-			content: "Previous output\n>",
-			want:    true,
-		},
-		{
 			name:    "Y/n prompt",
 			tool:    "claude",
 			content: "Do you want to continue? (Y/n)",
@@ -131,18 +119,6 @@ func TestDetector_IsWaiting(t *testing.T) {
 			tool:    "claude",
 			content: "Select an option:\nUse arrow keys to navigate",
 			want:    true,
-		},
-		{
-			name:    "busy - not waiting",
-			tool:    "claude",
-			content: "⠙ Working... ctrl+c to interrupt",
-			want:    false,
-		},
-		{
-			name:    "regular output",
-			tool:    "claude",
-			content: "Here is the code:\nfunction hello() { }",
-			want:    false,
 		},
 		{
 			name:    "box drawing permission dialog",
@@ -163,15 +139,52 @@ func TestDetector_IsWaiting(t *testing.T) {
 			want:    true,
 		},
 		{
-			name:    "prompt with suggestion",
+			name:    "busy - not approval",
 			tool:    "claude",
-			content: "Done!\n❯ Try asking about tests",
+			content: "⠙ Working... ctrl+c to interrupt",
+			want:    false,
+		},
+		{
+			name:    "standalone prompt - not approval",
+			tool:    "claude",
+			content: "Previous output\n❯",
+			want:    false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			d := NewDetector(tt.tool)
+			if got := d.NeedsApproval(tt.content); got != tt.want {
+				t.Errorf("NeedsApproval() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestDetector_IsReady(t *testing.T) {
+	tests := []struct {
+		name    string
+		tool    string
+		content string
+		want    bool
+	}{
+		{
+			name:    "standalone prompt character",
+			tool:    "claude",
+			content: "Previous output\n❯",
 			want:    true,
 		},
 		{
-			name:    "completion with prompt",
+			name:    "standalone > prompt",
 			tool:    "claude",
-			content: "Task completed successfully.\nWhat would you like to do next?\n❯",
+			content: "Previous output\n>",
+			want:    true,
+		},
+		{
+			name:    "prompt with suggestion",
+			tool:    "claude",
+			content: "Done!\n❯ Try asking about tests",
 			want:    true,
 		},
 		{
@@ -180,13 +193,31 @@ func TestDetector_IsWaiting(t *testing.T) {
 			content: "Done.\n❯\u00A0",
 			want:    true,
 		},
+		{
+			name:    "busy - not ready",
+			tool:    "claude",
+			content: "⠙ Working... ctrl+c to interrupt",
+			want:    false,
+		},
+		{
+			name:    "approval dialog - not ready",
+			tool:    "claude",
+			content: "Yes, allow once\nYes, allow always",
+			want:    false,
+		},
+		{
+			name:    "regular output - not ready",
+			tool:    "claude",
+			content: "Here is the code:\nfunction hello() { }",
+			want:    false,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			d := NewDetector(tt.tool)
-			if got := d.IsWaiting(tt.content); got != tt.want {
-				t.Errorf("IsWaiting() = %v, want %v", got, tt.want)
+			if got := d.IsReady(tt.content); got != tt.want {
+				t.Errorf("IsReady() = %v, want %v", got, tt.want)
 			}
 		})
 	}
@@ -212,22 +243,22 @@ func TestDetector_DetectStatus(t *testing.T) {
 			want:    StatusActive,
 		},
 		{
-			name:    "waiting - prompt",
-			tool:    "claude",
-			content: "Done.\n❯",
-			want:    StatusWaiting,
-		},
-		{
-			name:    "waiting - permission",
+			name:    "approval - permission",
 			tool:    "claude",
 			content: "Yes, allow once\nYes, allow always",
-			want:    StatusWaiting,
+			want:    StatusApproval,
 		},
 		{
-			name:    "idle - regular output",
+			name:    "ready - prompt",
+			tool:    "claude",
+			content: "Done.\n❯",
+			want:    StatusReady,
+		},
+		{
+			name:    "ready - regular output defaults to ready",
 			tool:    "claude",
 			content: "Here is the result:\nfunction foo() {}",
-			want:    StatusIdle,
+			want:    StatusReady,
 		},
 	}
 
