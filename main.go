@@ -122,6 +122,7 @@ Run 'hive new' to create a new session from the current repository.`,
 			)
 
 			flags.Service = hive.New(store, gitExec, cfg, exec, logger, os.Stdout, os.Stderr)
+			flags.Store = store
 			return ctx, nil
 		},
 	}

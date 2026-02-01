@@ -26,9 +26,10 @@ func (s Status) String() string {
 
 // CheckItem represents a single line item within a check result.
 type CheckItem struct {
-	Label  string `json:"label"`
-	Status Status `json:"-"`
-	Detail string `json:"detail,omitempty"`
+	Label   string `json:"label"`
+	Status  Status `json:"-"`
+	Detail  string `json:"detail,omitempty"`
+	Fixable bool   `json:"fixable,omitempty"`
 
 	// For JSON output
 	StatusStr string `json:"status"`
@@ -74,4 +75,17 @@ func Summary(results []Result) (passed, warned, failed int) {
 		}
 	}
 	return
+}
+
+// CountFixable returns the number of fixable issues across all results.
+func CountFixable(results []Result) int {
+	count := 0
+	for _, r := range results {
+		for _, item := range r.Items {
+			if item.Fixable && (item.Status == StatusWarn || item.Status == StatusFail) {
+				count++
+			}
+		}
+	}
+	return count
 }
