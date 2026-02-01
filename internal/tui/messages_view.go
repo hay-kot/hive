@@ -199,11 +199,11 @@ func (v *MessagesView) View() string {
 
 	// Column widths (defined early for header and content)
 	// Order: Time | Sender | Topic | Message | Age
-	timeWidth := 8     // "14:32:01"
-	senderWidth := 14  // "agent.XXXX" format
-	topicWidth := 14   // topic name
-	ageWidth := 4      // "2m", "1h", "3d"
-	padding := 5       // spaces between columns
+	timeWidth := 8    // "14:32:01"
+	senderWidth := 14 // "agent.XXXX" format
+	topicWidth := 14  // topic name
+	ageWidth := 4     // "2m", "1h", "3d"
+	padding := 5      // spaces between columns
 	contentWidth := v.width - timeWidth - senderWidth - topicWidth - ageWidth - padding - 4
 
 	if contentWidth < 20 {
