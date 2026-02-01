@@ -786,7 +786,7 @@ func (m Model) handleSessionsKey(msg tea.KeyMsg, keyStr string) (tea.Model, tea.
 	newSelected := m.selectedSession()
 	if newSelected != nil && newSelected.ID != prevID && newSelected.ID != m.lastAcknowledgedID {
 		m.lastAcknowledgedID = newSelected.ID
-		ackCmd := acknowledgeSession(m.terminalManager, newSelected)
+		ackCmd := acknowledgeSession(m.terminalManager, m.service, newSelected)
 		if ackCmd != nil {
 			return m, tea.Batch(cmd, ackCmd)
 		}

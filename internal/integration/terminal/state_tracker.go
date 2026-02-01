@@ -40,12 +40,20 @@ type StateTracker struct {
 // SpikeWindow is how long we wait to confirm sustained activity.
 const SpikeWindow = 1 * time.Second
 
-// NewStateTracker creates a new state tracker.
-func NewStateTracker() *StateTracker {
-	return &StateTracker{
-		lastStableStatus: StatusWaiting, // Start as waiting until acknowledged
-		acknowledged:     false,
+// NewStateTracker creates a new state tracker with initial acknowledged state.
+// If acknowledged is true, starts as idle. Otherwise starts as waiting.
+func NewStateTracker(acknowledged bool) *StateTracker {
+	st := &StateTracker{
+		acknowledged:   acknowledged,
+		acknowledgedAt: time.Now(),
 	}
+	if acknowledged {
+		st.lastStableStatus = StatusIdle
+	} else {
+		st.lastStableStatus = StatusWaiting
+		st.waitingSince = time.Now()
+	}
+	return st
 }
 
 // Acknowledge marks the session as seen by the user.

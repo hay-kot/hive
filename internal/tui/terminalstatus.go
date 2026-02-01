@@ -90,6 +90,9 @@ func fetchTerminalStatusForSession(ctx context.Context, mgr *terminal.Manager, s
 		return status
 	}
 
+	// Populate acknowledged state from session metadata for StateTracker initialization
+	info.Acknowledged = sess.Metadata[terminal.MetaAcknowledged] == "true"
+
 	// Get status from integration
 	termStatus, err := integration.GetStatus(ctx, info)
 	if err != nil {
@@ -117,9 +120,15 @@ type acknowledgeSessionMsg struct {
 	SessionID string
 }
 
+// sessionMetadataUpdater defines the interface for updating session metadata.
+type sessionMetadataUpdater interface {
+	UpdateSessionMetadata(ctx context.Context, id, key, value string) error
+}
+
 // acknowledgeSession returns a command that acknowledges a session.
 // This marks the session as "seen" by the user, transitioning it from waiting to idle.
-func acknowledgeSession(mgr *terminal.Manager, sess *session.Session) tea.Cmd {
+// It both updates the in-memory state and persists to the session store.
+func acknowledgeSession(mgr *terminal.Manager, svc sessionMetadataUpdater, sess *session.Session) tea.Cmd {
 	if mgr == nil || sess == nil || sess.State != session.StateActive {
 		return nil
 	}
@@ -128,8 +137,13 @@ func acknowledgeSession(mgr *terminal.Manager, sess *session.Session) tea.Cmd {
 		ctx, cancel := context.WithTimeout(context.Background(), terminalStatusTimeout)
 		defer cancel()
 
-		// Acknowledge the session - errors are silently ignored as this is best-effort
+		// Acknowledge the session in memory
 		_ = mgr.AcknowledgeSession(ctx, sess.Slug, sess.Metadata)
+
+		// Persist the acknowledged state
+		if svc != nil {
+			_ = svc.UpdateSessionMetadata(ctx, sess.ID, terminal.MetaAcknowledged, "true")
+		}
 
 		return acknowledgeSessionMsg{SessionID: sess.ID}
 	}

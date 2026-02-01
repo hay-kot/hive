@@ -13,12 +13,16 @@ const (
 	StatusMissing Status = "missing" // terminal session not found
 )
 
+// Metadata key for persisting acknowledged state in session.Metadata.
+const MetaAcknowledged = "terminal_acknowledged"
+
 // SessionInfo holds information about a discovered terminal session.
 type SessionInfo struct {
 	Name         string // terminal session name (e.g., tmux session name)
 	Pane         string // pane identifier if applicable
 	Status       Status // current detected status
 	DetectedTool string // detected AI tool (claude, gemini, etc.)
+	Acknowledged bool   // whether user has seen this session (from persisted state)
 }
 
 // Integration defines the interface for terminal multiplexer integrations.

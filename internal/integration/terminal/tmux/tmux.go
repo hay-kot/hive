@@ -161,7 +161,8 @@ func (t *Integration) GetStatus(ctx context.Context, info *terminal.SessionInfo)
 	t.mu.Lock()
 	tracker, ok := t.trackers[info.Name]
 	if !ok {
-		tracker = terminal.NewStateTracker()
+		// Initialize with persisted acknowledged state from SessionInfo
+		tracker = terminal.NewStateTracker(info.Acknowledged)
 		t.trackers[info.Name] = tracker
 	}
 	t.mu.Unlock()

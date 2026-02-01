@@ -188,6 +188,22 @@ func (s *Service) GetSession(ctx context.Context, id string) (session.Session, e
 	return s.sessions.Get(ctx, id)
 }
 
+// UpdateSessionMetadata updates metadata for a session.
+func (s *Service) UpdateSessionMetadata(ctx context.Context, id, key, value string) error {
+	sess, err := s.sessions.Get(ctx, id)
+	if err != nil {
+		return fmt.Errorf("get session: %w", err)
+	}
+
+	if sess.Metadata == nil {
+		sess.Metadata = make(map[string]string)
+	}
+	sess.Metadata[key] = value
+	sess.UpdatedAt = time.Now()
+
+	return s.sessions.Save(ctx, sess)
+}
+
 // RecycleSession marks a session for recycling and runs recycle commands.
 // The directory is renamed to a recycled name pattern immediately.
 // Output is written to w. If w is nil, output is discarded.
