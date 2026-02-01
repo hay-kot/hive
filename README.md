@@ -41,47 +41,23 @@ Hive includes a lightweight pub/sub messaging system that enables agents to comm
 
 ### Example: Cross-Repository Collaboration
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              HIVE MESSAGE BUS                               │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│   microservice-a/                          microservice-b/                  │
-│   ┌─────────────────────┐                  ┌─────────────────────┐          │
-│   │  Agent A            │                  │  Agent B            │          │
-│   │  (auth-service)     │                  │  (user-service)     │          │
-│   └──────────┬──────────┘                  └──────────┬──────────┘          │
-│              │                                        │                     │
-│              │  1. "What's the User                   │                     │
-│              │      struct format?"                   │                     │
-│              │                                        │                     │
-│              ▼                                        │                     │
-│   ┌─────────────────────────────────────────────────────────────────┐       │
-│   │                     topic: collab.abc123                        │       │
-│   └─────────────────────────────────────────────────────────────────┘       │
-│              │                                        │                     │
-│              │                              2. Agent B is notified  │       │
-│              │                                        │                     │
-│              │                                        ▼                     │
-│              │                              ┌─────────────────────┐         │
-│              │                              │ Reads user/model.go │         │
-│              │                              │ Responds with struct│         │
-│              │                              └──────────┬──────────┘         │
-│              │                                        │                     │
-│              │                              3. Posts response       │       │
-│              │                                        │                     │
-│   ┌─────────────────────────────────────────────────────────────────┐       │
-│   │                     topic: collab.abc123                        │       │
-│   └─────────────────────────────────────────────────────────────────┘       │
-│              │                                        │                     │
-│              ▼                                        │                     │
-│   ┌─────────────────────┐                             │                     │
-│   │ 4. Agent A receives │                             │                     │
-│   │    User struct and  │                             │                     │
-│   │    continues work   │                             │                     │
-│   └─────────────────────┘                             │                     │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
+```mermaid
+sequenceDiagram
+    participant A as Agent A<br/>(auth-service)
+    participant Bus as Message Bus<br/>topic: collab.abc123
+    participant B as Agent B<br/>(user-service)
+
+    Note over A: Working on auth flow,<br/>needs User struct format
+
+    A->>Bus: pub "What fields are in the User struct?"
+    Bus-->>B: sub --wait receives message
+
+    Note over B: Reads user/model.go
+
+    B->>Bus: pub "User{ID, Email, Name, CreatedAt}"
+    Bus-->>A: sub --last 1 receives response
+
+    Note over A: Continues implementation<br/>with correct struct
 ```
 
 ### Messaging Commands
