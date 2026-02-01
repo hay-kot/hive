@@ -3,13 +3,14 @@ module github.com/hay-kot/hive
 go 1.25
 
 require (
+	charm.land/bubbles/v2 v2.0.0-rc.1.0.20260109112849-ae99f46cec66
+	charm.land/bubbletea/v2 v2.0.0-rc.2.0.20251216153312-819e2e89c62e
+	charm.land/lipgloss/v2 v2.0.0-beta.3.0.20251205162909-7869489d8971
 	github.com/bmatcuk/doublestar/v4 v4.10.0
-	github.com/charmbracelet/bubbles v0.21.1-0.20250623103423-23b8fd6302d7
-	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/glamour v0.10.0
 	github.com/charmbracelet/huh v0.8.0
 	github.com/charmbracelet/lipgloss v1.1.1-0.20250404203927-76690c660834
-	github.com/charmbracelet/lipgloss/v2 v2.0.0-00010101000000-000000000000
+	github.com/charmbracelet/lipgloss/v2 v2.0.0-beta1
 	github.com/hay-kot/criterio v1.0.0
 	github.com/rs/zerolog v1.34.0
 	github.com/stretchr/testify v1.11.1
@@ -24,6 +25,8 @@ require (
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/aymerick/douceur v0.2.0 // indirect
 	github.com/catppuccin/go v0.3.0 // indirect
+	github.com/charmbracelet/bubbles v0.21.1-0.20250623103423-23b8fd6302d7 // indirect
+	github.com/charmbracelet/bubbletea v1.3.10 // indirect
 	github.com/charmbracelet/colorprofile v0.4.1 // indirect
 	github.com/charmbracelet/ultraviolet v0.0.0-20251212194010-b927aa605560 // indirect
 	github.com/charmbracelet/x/ansi v0.11.3 // indirect
@@ -62,13 +65,4 @@ require (
 	golang.org/x/sync v0.18.0 // indirect
 	golang.org/x/sys v0.40.0 // indirect
 	golang.org/x/text v0.24.0 // indirect
-)
-
-// Map old github.com import paths to new charm.land versions
-// These replace directives allow a gradual migration from github.com to charm.land imports
-// Remove after all imports are updated to use charm.land directly
-replace (
-	github.com/charmbracelet/bubbles/v2 => charm.land/bubbles/v2 v2.0.0-rc.1.0.20260109112849-ae99f46cec66
-	github.com/charmbracelet/bubbletea/v2 => charm.land/bubbletea/v2 v2.0.0-rc.2.0.20251216153312-819e2e89c62e
-	github.com/charmbracelet/lipgloss/v2 => charm.land/lipgloss/v2 v2.0.0-beta.3.0.20251205162909-7869489d8971
 )

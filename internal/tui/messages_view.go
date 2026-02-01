@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	lipgloss "github.com/charmbracelet/lipgloss/v2"
+	lipgloss "charm.land/lipgloss/v2"
 	"github.com/hay-kot/hive/internal/core/messaging"
 )
 

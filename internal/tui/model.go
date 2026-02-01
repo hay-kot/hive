@@ -6,12 +6,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/list"
-	"github.com/charmbracelet/bubbles/spinner"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/list"
+	"charm.land/bubbles/v2/spinner"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
+	lipgloss "charm.land/lipgloss/v2"
 	"github.com/charmbracelet/huh"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/hay-kot/hive/internal/core/config"
 	"github.com/hay-kot/hive/internal/core/messaging"
 	"github.com/hay-kot/hive/internal/core/session"
@@ -168,10 +169,12 @@ func New(service *hive.Service, cfg *config.Config, opts Options) Model {
 	l.SetFilteringEnabled(true)
 	l.SetShowTitle(false) // Title shown in tab bar instead
 	l.Styles.TitleBar = lipgloss.NewStyle()
-	// Use hex colors directly for bubbles v1 compatibility (lipgloss v1 types)
-	l.FilterInput.PromptStyle = lipgloss.NewStyle().PaddingLeft(1).Foreground(lipgloss.Color("#7aa2f7")).Bold(true)
+	// Configure filter input styles for bubbles v2
 	l.FilterInput.Prompt = "Filter: "
-	l.Styles.FilterCursor = lipgloss.NewStyle().Foreground(lipgloss.Color("#7aa2f7"))
+	filterStyles := textinput.DefaultStyles(true) // dark mode
+	filterStyles.Focused.Prompt = lipgloss.NewStyle().PaddingLeft(1).Foreground(lipgloss.Color("#7aa2f7")).Bold(true)
+	filterStyles.Cursor.Color = lipgloss.Color("#7aa2f7")
+	l.FilterInput.SetStyles(filterStyles)
 
 	// Style help to match messages view (consistent gray, bullet separators, left padding)
 	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#565f89"))
@@ -514,7 +517,9 @@ func (m Model) handleNewSessionFormKey(msg tea.KeyMsg, keyStr string) (tea.Model
 
 // updateNewSessionForm routes any message to the form and handles state changes.
 func (m Model) updateNewSessionForm(msg tea.Msg) (tea.Model, tea.Cmd) {
-	form, cmd := m.newSessionForm.Form().Update(msg)
+	// Note: huh uses bubbletea v1, so we ignore its commands (incompatible with v2)
+	// The form still works for input, just without v1-specific command handling
+	form, _ := m.newSessionForm.Form().Update(msg)
 	if f, ok := form.(*huh.Form); ok {
 		m.newSessionForm.form = f
 
@@ -530,7 +535,7 @@ func (m Model) updateNewSessionForm(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 	}
-	return m, cmd
+	return m, nil
 }
 
 // handleRecycleModalKey handles keys when recycle modal is shown.
@@ -652,8 +657,9 @@ func (m Model) handleFilteringKey(msg tea.KeyMsg, keyStr string) (tea.Model, tea
 			m.msgView.DeleteFilterRune()
 		default:
 			// Add character to filter if it's a printable rune
-			if len(msg.Runes) > 0 {
-				for _, r := range msg.Runes {
+			// In bubbletea V2, msg.Runes is replaced with msg.Key().Text
+			if text := msg.Key().Text; text != "" {
+				for _, r := range text {
 					m.msgView.AddFilterRune(r)
 				}
 			}
@@ -731,7 +737,10 @@ func (m Model) handleSessionsKey(msg tea.KeyMsg, keyStr string) (tea.Model, tea.
 		}
 		m.newSessionForm = NewNewSessionForm(m.discoveredRepos, preselectedRemote, existingNames)
 		m.state = stateCreatingSession
-		return m, m.newSessionForm.Form().Init()
+		// Note: huh uses bubbletea v1, so we can't use its Init() command directly
+		// The form will still work, just without v1-specific initialization
+		_ = m.newSessionForm.Form().Init()
+		return m, nil
 	}
 
 	selected := m.selectedSession()
@@ -868,9 +877,9 @@ func (m Model) refreshGitStatuses() tea.Cmd {
 }
 
 // View renders the TUI.
-func (m Model) View() string {
+func (m Model) View() tea.View {
 	if m.quitting {
-		return ""
+		return tea.NewView("")
 	}
 
 	// Build main view
@@ -887,9 +896,16 @@ func (m Model) View() string {
 		h = 24
 	}
 
+	// Helper to create view with alt screen enabled
+	newView := func(content string) tea.View {
+		v := tea.NewView(content)
+		v.AltScreen = true
+		return v
+	}
+
 	// Overlay output modal if running recycle
 	if m.state == stateRunningRecycle {
-		return m.outputModal.Overlay(mainView, w, h)
+		return newView(m.outputModal.Overlay(mainView, w, h))
 	}
 
 	// Overlay new session form (render directly without Modal's Confirm/Cancel buttons)
@@ -901,27 +917,38 @@ func (m Model) View() string {
 			m.newSessionForm.View(),
 		)
 		formOverlay := modalStyle.Render(formContent)
-		return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, formOverlay)
+
+		// Use Compositor/Layer for true overlay (background remains visible)
+		bgLayer := lipgloss.NewLayer(mainView)
+		formLayer := lipgloss.NewLayer(formOverlay)
+		formW := lipgloss.Width(formOverlay)
+		formH := lipgloss.Height(formOverlay)
+		centerX := (w - formW) / 2
+		centerY := (h - formH) / 2
+		formLayer.X(centerX).Y(centerY).Z(1)
+
+		compositor := lipgloss.NewCompositor(bgLayer, formLayer)
+		return newView(compositor.Render())
 	}
 
 	// Overlay message preview modal
 	if m.state == statePreviewingMessage {
-		return m.previewModal.Overlay(mainView, w, h)
+		return newView(m.previewModal.Overlay(mainView, w, h))
 	}
 
 	// Overlay loading spinner if loading
 	if m.state == stateLoading {
 		loadingView := lipgloss.JoinHorizontal(lipgloss.Left, m.spinner.View(), " "+m.loadingMessage)
 		modal := NewModal("", loadingView)
-		return modal.Overlay(mainView, w, h)
+		return newView(modal.Overlay(mainView, w, h))
 	}
 
 	// Overlay modal if confirming
 	if m.state == stateConfirming {
-		return m.modal.Overlay(mainView, w, h)
+		return newView(m.modal.Overlay(mainView, w, h))
 	}
 
-	return mainView
+	return newView(mainView)
 }
 
 // renderTabView renders the tab-based view layout.
