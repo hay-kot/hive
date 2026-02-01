@@ -57,6 +57,7 @@ func NewNewSessionForm(repos []DiscoveredRepo, preselectedRemote string, existin
 	nameInput.Placeholder = "my-feature-branch"
 	nameInput.CharLimit = 64
 	nameInput.Prompt = "" // No prompt prefix
+	nameInput.SetWidth(40)
 
 	// Style the input
 	styles := textinput.DefaultStyles(true)
