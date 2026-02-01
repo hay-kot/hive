@@ -23,6 +23,8 @@ Manage multiple AI agent sessions in isolated git environments with real-time st
 go install github.com/colonyops/hive@latest
 ```
 
+We also publish binaries as a part of our release cycle.
+
 ## Overview
 
 Hive creates isolated git environments for running multiple AI agents in parallel. Instead of managing worktrees manually, hive handles cloning, recycling, and spawning terminal sessions with your preferred AI tool.
@@ -34,6 +36,22 @@ Hive creates isolated git environments for running multiple AI agents in paralle
 - **Inter-agent Messaging** — Pub/sub communication between sessions
 - **Context Sharing** — Shared storage per repository via `.hive` symlinks
 - **Custom Keybindings** — Configure actions with shell commands
+
+## Quick Start
+
+// TODO
+
+## TUI Status Indicators
+
+When terminal integration is enabled, the TUI shows real-time agent status:
+
+| Indicator | Color            | Meaning                         |
+| --------- | ---------------- | ------------------------------- |
+| `[●]`     | Green (animated) | Agent actively working          |
+| `[!]`     | Yellow           | Agent needs approval/permission |
+| `[>]`     | Cyan             | Agent ready for input           |
+| `[?]`     | Dim              | Terminal session not found      |
+| `[○]`     | Gray             | Session recycled                |
 
 ## Inter-Agent Messaging
 
@@ -60,6 +78,8 @@ sequenceDiagram
     Note over A: Continues implementation<br/>with correct struct
 ```
 
+This example is simple, but I've used this system at work to debug complex issues across several microservices, pinpointing a bug in a service I didn't own.
+
 ### Messaging Commands
 
 ```bash
@@ -80,18 +100,6 @@ hive msg sub -t collab.abc123 --last 1
 ```
 
 Each agent also has an inbox topic (`agent.{session-id}.inbox`) for direct messages.
-
-## TUI Status Indicators
-
-When terminal integration is enabled, the TUI shows real-time agent status:
-
-| Indicator | Color            | Meaning                         |
-| --------- | ---------------- | ------------------------------- |
-| `[●]`     | Green (animated) | Agent actively working          |
-| `[!]`     | Yellow           | Agent needs approval/permission |
-| `[>]`     | Cyan             | Agent ready for input           |
-| `[?]`     | Dim              | Terminal session not found      |
-| `[○]`     | Gray             | Session recycled                |
 
 ## Configuration
 
