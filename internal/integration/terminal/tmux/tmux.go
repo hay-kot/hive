@@ -189,5 +189,21 @@ func (t *Integration) capturePane(_ context.Context, sessionName, pane string) (
 	return string(output), nil
 }
 
+// Acknowledge marks a session as seen by the user.
+func (t *Integration) Acknowledge(_ context.Context, info *terminal.SessionInfo) error {
+	if info == nil {
+		return nil
+	}
+
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	if tracker, ok := t.trackers[info.Name]; ok {
+		tracker.Acknowledge()
+	}
+
+	return nil
+}
+
 // Ensure Integration implements terminal.Integration.
 var _ terminal.Integration = (*Integration)(nil)

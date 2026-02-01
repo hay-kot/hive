@@ -111,3 +111,26 @@ func startTerminalPollTicker(interval time.Duration) tea.Cmd {
 		return terminalPollTickMsg{}
 	})
 }
+
+// acknowledgeSessionMsg signals that a session should be acknowledged.
+type acknowledgeSessionMsg struct {
+	SessionID string
+}
+
+// acknowledgeSession returns a command that acknowledges a session.
+// This marks the session as "seen" by the user, transitioning it from waiting to idle.
+func acknowledgeSession(mgr *terminal.Manager, sess *session.Session) tea.Cmd {
+	if mgr == nil || sess == nil || sess.State != session.StateActive {
+		return nil
+	}
+
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), terminalStatusTimeout)
+		defer cancel()
+
+		// Acknowledge the session - errors are silently ignored as this is best-effort
+		_ = mgr.AcknowledgeSession(ctx, sess.Slug, sess.Metadata)
+
+		return acknowledgeSessionMsg{SessionID: sess.ID}
+	}
+}

@@ -47,8 +47,8 @@ var whimsicalWords = []string{
 
 // IsBusy returns true if the terminal content indicates the agent is actively working.
 func (d *Detector) IsBusy(content string) bool {
-	// Only check the last few lines where status indicators appear
-	lines := getLastNonEmptyLines(content, 5)
+	// Check last 15 lines for context (matches Agent Deck)
+	lines := getLastNonEmptyLines(content, 15)
 	recentContent := strings.Join(lines, "\n")
 	recentLower := strings.ToLower(recentContent)
 

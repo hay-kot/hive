@@ -71,8 +71,9 @@ type Model struct {
 	columnWidths   *ColumnWidths
 
 	// Terminal integration
-	terminalManager  *terminal.Manager
-	terminalStatuses *kv.Store[string, TerminalStatus]
+	terminalManager       *terminal.Manager
+	terminalStatuses      *kv.Store[string, TerminalStatus]
+	lastAcknowledgedID    string // Last session ID acknowledged (to avoid duplicate acks)
 
 	// Status animation
 	animationFrame int
@@ -373,6 +374,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.terminalStatuses != nil {
 			m.terminalStatuses.SetBatch(msg.Results)
 		}
+		return m, nil
+
+	case acknowledgeSessionMsg:
+		// Session acknowledge completed - nothing to do, just consume the message
 		return m, nil
 
 	case animationTickMsg:
@@ -767,8 +772,26 @@ func (m Model) handleSessionsKey(msg tea.KeyMsg, keyStr string) (tea.Model, tea.
 		return m, m.executeAction(action)
 	}
 
+	// Update list and check if selection changed
+	prevSelected := m.selectedSession()
+	var prevID string
+	if prevSelected != nil {
+		prevID = prevSelected.ID
+	}
+
 	var cmd tea.Cmd
 	m.list, cmd = m.list.Update(msg)
+
+	// After list update, check if selection changed and acknowledge if needed
+	newSelected := m.selectedSession()
+	if newSelected != nil && newSelected.ID != prevID && newSelected.ID != m.lastAcknowledgedID {
+		m.lastAcknowledgedID = newSelected.ID
+		ackCmd := acknowledgeSession(m.terminalManager, newSelected)
+		if ackCmd != nil {
+			return m, tea.Batch(cmd, ackCmd)
+		}
+	}
+
 	return m, cmd
 }
 

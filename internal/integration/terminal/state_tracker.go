@@ -14,11 +14,16 @@ import (
 // Three-state model:
 //   - GREEN (active)  = Explicit busy indicator found (spinner, "ctrl+c to interrupt")
 //   - YELLOW (waiting) = Prompt detected, needs user input
-//   - GRAY (idle)     = No busy indicator, no prompt
+//   - GRAY (idle)     = No busy indicator, no prompt, AND user has acknowledged
 type StateTracker struct {
 	// Content tracking
 	lastHash       string    // SHA256 of normalized content
 	lastChangeTime time.Time // When sustained activity was last confirmed
+
+	// Acknowledge tracking: distinguishes idle (user saw) from waiting (needs attention)
+	acknowledged   bool      // User has seen this state (yellow vs gray)
+	acknowledgedAt time.Time // When acknowledged was set (for grace period)
+	waitingSince   time.Time // When session transitioned to waiting status
 
 	// Activity timestamp tracking (from tmux window_activity)
 	lastActivityTimestamp int64 // Previous activity timestamp
@@ -38,8 +43,36 @@ const SpikeWindow = 1 * time.Second
 // NewStateTracker creates a new state tracker.
 func NewStateTracker() *StateTracker {
 	return &StateTracker{
-		lastStableStatus: StatusIdle,
+		lastStableStatus: StatusWaiting, // Start as waiting until acknowledged
+		acknowledged:     false,
 	}
+}
+
+// Acknowledge marks the session as seen by the user.
+// Transitions waiting → idle.
+func (st *StateTracker) Acknowledge() {
+	st.acknowledged = true
+	st.acknowledgedAt = time.Now()
+	st.lastStableStatus = StatusIdle
+}
+
+// ResetAcknowledged marks the session as needing attention.
+// Called when new activity detected or prompt appears.
+// Transitions idle → waiting.
+func (st *StateTracker) ResetAcknowledged() {
+	st.acknowledged = false
+	st.waitingSince = time.Now()
+	st.lastStableStatus = StatusWaiting
+}
+
+// IsAcknowledged returns whether the user has seen the current state.
+func (st *StateTracker) IsAcknowledged() bool {
+	return st.acknowledged
+}
+
+// WaitingSince returns when the session became waiting.
+func (st *StateTracker) WaitingSince() time.Time {
+	return st.waitingSince
 }
 
 // Update processes new activity data and returns the detected status.
@@ -53,27 +86,39 @@ func (st *StateTracker) Update(content string, activityTS int64, detector *Detec
 	isBusy := detector.IsBusy(content)
 	isWaiting := detector.IsWaiting(content)
 
-	// Prompt takes priority over busy (Claude can show spinner with question UI)
-	if isWaiting {
-		st.lastStableStatus = StatusWaiting
-		st.resetSpikeDetection()
-		return StatusWaiting
-	}
-
 	// Explicit busy indicator = definitely active
-	if isBusy {
+	// Reset acknowledged since new activity detected
+	if isBusy && !isWaiting {
 		st.lastChangeTime = now
+		st.acknowledged = false
 		st.lastStableStatus = StatusActive
 		st.resetSpikeDetection()
 		return StatusActive
 	}
 
+	// Prompt takes priority over busy (Claude can show spinner with question UI)
+	if isWaiting {
+		// Reset acknowledged - needs user attention
+		st.acknowledged = false
+		if st.lastStableStatus != StatusWaiting {
+			st.waitingSince = now
+		}
+		st.lastStableStatus = StatusWaiting
+		st.resetSpikeDetection()
+		return StatusWaiting
+	}
+
 	// No explicit indicators - use spike detection on activity timestamp
 	if st.lastActivityTimestamp == 0 {
-		// First poll - initialize and return idle
+		// First poll - initialize and return waiting (not idle) until acknowledged
 		st.lastActivityTimestamp = activityTS
-		st.lastStableStatus = StatusIdle
-		return StatusIdle
+		if st.acknowledged {
+			st.lastStableStatus = StatusIdle
+			return StatusIdle
+		}
+		st.lastStableStatus = StatusWaiting
+		st.waitingSince = now
+		return StatusWaiting
 	}
 
 	// Activity timestamp changed
@@ -97,6 +142,7 @@ func (st *StateTracker) Update(content string, activityTS int64, detector *Detec
 				// Only go green if we also detect busy indicator
 				if isBusy {
 					st.lastChangeTime = now
+					st.acknowledged = false
 					st.lastStableStatus = StatusActive
 					st.resetSpikeDetection()
 					return StatusActive
@@ -123,9 +169,19 @@ func (st *StateTracker) Update(content string, activityTS int64, detector *Detec
 		return st.lastStableStatus
 	}
 
-	// No activity, no busy indicator, no prompt = idle
-	st.lastStableStatus = StatusIdle
-	return StatusIdle
+	// No activity, no busy indicator, no prompt
+	// Return idle only if acknowledged, otherwise waiting
+	if st.acknowledged {
+		st.lastStableStatus = StatusIdle
+		return StatusIdle
+	}
+
+	// Not acknowledged = still needs attention
+	if st.lastStableStatus != StatusWaiting {
+		st.waitingSince = now
+	}
+	st.lastStableStatus = StatusWaiting
+	return StatusWaiting
 }
 
 // resetSpikeDetection clears the spike detection window.
@@ -153,34 +209,56 @@ var spinnerRunes = []rune{
 
 // Patterns for normalizing dynamic content.
 var (
+	// Dynamic status counters: "(45s · 1234 tokens · ctrl+c to interrupt)" or "(35s · ↑ 673 tokens)"
+	dynamicStatusPattern = regexp.MustCompile(`\([^)]*\d+s\s*·[^)]*(?:tokens|↑|↓)[^)]*\)`)
+
+	// Progress bar patterns: [====>   ] 45%
+	progressBarPattern = regexp.MustCompile(`\[=*>?\s*\]\s*\d+%`)
+
 	// Time patterns like 12:34 or 12:34:56
 	timePattern = regexp.MustCompile(`\b\d{1,2}:\d{2}(:\d{2})?\b`)
+
 	// Progress percentages like 45%
 	percentagePattern = regexp.MustCompile(`\b\d{1,3}%`)
+
 	// Download progress like 1.2MB/5.6MB
 	downloadPattern = regexp.MustCompile(`\d+(\.\d+)?[KMGT]?B/\d+(\.\d+)?[KMGT]?B`)
+
 	// Multiple blank lines
 	blankLinesPattern = regexp.MustCompile(`\n{3,}`)
+
+	// Thinking pattern with spinner + ellipsis + status: "✳ Gusting… (35s · ↑ 673 tokens)"
+	thinkingPatternEllipsis = regexp.MustCompile(`[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏·✳✽✶✻✢]\s*.+…\s*\([^)]*\)`)
 )
 
 // NormalizeContent prepares content for hashing by removing dynamic elements.
+// This prevents false hash changes from animations and counters.
 func NormalizeContent(content string) string {
 	result := stripANSI(content)
 
 	// Strip control characters (keep tab, newline, carriage return)
 	result = stripControlChars(result)
 
-	// Strip spinner characters
+	// Strip spinner characters that animate
 	for _, r := range spinnerRunes {
 		result = strings.ReplaceAll(result, string(r), "")
 	}
 
-	// Normalize dynamic content
-	result = timePattern.ReplaceAllString(result, "HH:MM:SS")
-	result = percentagePattern.ReplaceAllString(result, "N%")
-	result = downloadPattern.ReplaceAllString(result, "X.XMB/Y.YMB")
+	// Normalize Claude Code dynamic status: "(45s · 1234 tokens)" → "(STATUS)"
+	result = dynamicStatusPattern.ReplaceAllString(result, "(STATUS)")
 
-	// Trim trailing whitespace per line
+	// Normalize thinking spinner patterns: "✳ Gusting… (35s · ↑ 673 tokens)" → "THINKING…"
+	result = thinkingPatternEllipsis.ReplaceAllString(result, "THINKING…")
+
+	// Normalize progress indicators
+	result = progressBarPattern.ReplaceAllString(result, "[PROGRESS]")
+	result = downloadPattern.ReplaceAllString(result, "X.XMB/Y.YMB")
+	result = percentagePattern.ReplaceAllString(result, "N%")
+
+	// Normalize time patterns that change every second
+	result = timePattern.ReplaceAllString(result, "HH:MM:SS")
+
+	// Trim trailing whitespace per line (fixes resize false positives)
 	lines := strings.Split(result, "\n")
 	for i, line := range lines {
 		lines[i] = strings.TrimRight(line, " \t")

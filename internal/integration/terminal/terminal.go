@@ -39,4 +39,8 @@ type Integration interface {
 
 	// GetStatus returns the current status of a previously discovered session.
 	GetStatus(ctx context.Context, info *SessionInfo) (Status, error)
+
+	// Acknowledge marks a session as seen by the user.
+	// Transitions waiting → idle. Call when user views/attaches to the session.
+	Acknowledge(ctx context.Context, info *SessionInfo) error
 }
