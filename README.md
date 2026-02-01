@@ -35,15 +35,32 @@ Launches the interactive TUI for managing sessions.
 
 **Features:**
 
-- View all active and recycled sessions
+- View all active and recycled sessions in a tree view grouped by repository
+- Real-time terminal status monitoring (when tmux integration enabled)
+- Git status display (branch, additions, deletions)
 - Navigate with arrow keys or j/k
+- Filter sessions with `/`
+- Switch between Sessions and Messages views with `tab`
 - Configurable keybindings for actions
 - Confirmation dialogs for destructive actions
+
+**Status Indicators** (with terminal integration):
+
+| Indicator | Color | Meaning |
+|-----------|-------|---------|
+| `[●]` | Green (animated) | Agent actively working |
+| `[!]` | Yellow | Agent needs approval/permission |
+| `[>]` | Cyan | Agent ready for input |
+| `[?]` | Dim | Terminal session not found |
+| `[○]` | Gray | Session recycled |
 
 **Default keybindings:**
 
 - `r` - Mark session as recycled (with confirmation)
 - `d` - Delete session permanently (with confirmation)
+- `n` - Create new session (when repos discovered)
+- `g` - Refresh git statuses
+- `tab` - Switch between Sessions/Messages views
 - `q` / `Ctrl+C` - Quit
 
 #### `hive new`
@@ -124,99 +141,300 @@ hive prune
 hive prune --all
 ```
 
+#### `hive doctor`
+
+Runs diagnostic checks on configuration, environment, and dependencies.
+
+**Flags:**
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--format` | `text` | Output format (`text` or `json`) |
+
+#### `hive batch`
+
+Creates multiple agent sessions from a JSON specification. Useful for spawning parallel agents.
+
+**Flags:**
+| Flag | Alias | Description |
+|------|-------|-------------|
+| `--file` | `-f` | Path to JSON file (reads from stdin if not provided) |
+
+**Input Schema:**
+```json
+{
+  "sessions": [
+    {
+      "name": "session-name",
+      "prompt": "optional task prompt",
+      "remote": "optional git URL",
+      "source": "optional source path"
+    }
+  ]
+}
+```
+
+**Examples:**
+
+```bash
+# From stdin
+echo '{"sessions":[{"name":"task1","prompt":"Fix the auth bug"}]}' | hive batch
+
+# From file
+hive batch -f sessions.json
+```
+
+#### `hive ctx`
+
+Manages context directories for sharing files between sessions of the same repository.
+
+##### `hive ctx init`
+
+Creates a symlink (`.hive` by default) in the current directory pointing to the repository's context directory.
+
+```bash
+cd /path/to/session
+hive ctx init
+# Creates .hive -> ~/.local/share/hive/context/{owner}/{repo}/
+```
+
+##### `hive ctx prune`
+
+Deletes files older than the specified duration from the context directory.
+
+**Flags:**
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--older-than` | Yes | Duration (e.g., `7d`, `24h`, `1w`) |
+
+```bash
+hive ctx prune --older-than 7d
+```
+
+#### `hive msg`
+
+Publish and subscribe to messages for inter-agent communication.
+
+##### `hive msg pub`
+
+Publishes a message to a topic.
+
+**Flags:**
+| Flag | Alias | Required | Description |
+|------|-------|----------|-------------|
+| `--topic` | `-t` | Yes | Topic to publish to |
+| `--file` | `-f` | No | Read message from file |
+| `--sender` | `-s` | No | Override sender ID |
+
+```bash
+hive msg pub -t build.status "Build completed"
+echo "Hello" | hive msg pub -t greetings
+```
+
+##### `hive msg sub`
+
+Reads messages from topics.
+
+**Flags:**
+| Flag | Alias | Default | Description |
+|------|-------|---------|-------------|
+| `--topic` | `-t` | `*` | Topic pattern (supports wildcards like `agent.*`) |
+| `--last` | `-n` | - | Return only last N messages |
+| `--listen` | `-l` | false | Poll for new messages continuously |
+| `--wait` | `-w` | false | Wait for a single message and exit |
+| `--new` | - | false | Only unread messages (for inbox topics) |
+| `--timeout` | - | `30s` | Timeout for listen/wait mode |
+
+```bash
+hive msg sub                          # All messages
+hive msg sub -t agent.build           # Specific topic
+hive msg sub -t "agent.*" --last 10   # Wildcard, last 10
+hive msg sub --listen                 # Continuous polling
+```
+
+##### `hive msg list`
+
+Lists all topics with message counts.
+
+##### `hive msg topic`
+
+Generates a unique topic ID for inter-agent communication.
+
+**Flags:**
+| Flag | Alias | Description |
+|------|-------|-------------|
+| `--prefix` | `-p` | Topic prefix (default from config) |
+
+```bash
+hive msg topic           # outputs: agent.x7k2
+hive msg topic -p task   # outputs: task.x7k2
+```
+
+#### `hive session`
+
+Commands for inspecting sessions.
+
+##### `hive session info`
+
+Displays information about the current session based on working directory.
+
+**Flags:**
+| Flag | Description |
+|------|-------------|
+| `--json` | Output as JSON |
+
+```bash
+hive session info --json
+# {"id":"abc123","name":"my-session","inbox":"agent.abc123.inbox",...}
+```
+
+#### `hive doc`
+
+Access documentation and guides.
+
+##### `hive doc migrate`
+
+Shows configuration migration information between versions.
+
+**Flags:**
+| Flag | Description |
+|------|-------------|
+| `--all` | Show all migrations |
+
+##### `hive doc messaging`
+
+Outputs messaging conventions documentation for LLMs.
+
 ## Configuration
 
 Config file: `$XDG_CONFIG_HOME/hive/config.yaml` (default: `~/.config/hive/config.yaml`)
 
 ```yaml
+# Directories to scan for repositories (enables 'n' key in TUI)
+repo_dirs:
+  - ~/code/repos
+
+# Terminal integration for real-time agent status
+integrations:
+  terminal:
+    enabled: [tmux]
+    poll_interval: 500ms
+
 # Commands executed by hive
 commands:
-  # Spawn command runs after session creation
-  # Available template variables: .Path, .Name, .Prompt
+  # Spawn command runs after session creation (see Template Variables below)
   spawn:
-    - 'wezterm cli spawn --cwd "{{ .Path }}" -- claude --prompt "{{ .Prompt }}"'
+    - 'wezterm cli spawn --cwd "{{ .Path }}" -- claude'
+
+  # Batch spawn command - same as spawn but also has .Prompt
+  batch_spawn:
+    - 'wezterm cli spawn --cwd "{{ .Path }}" -- claude "{{ .Prompt }}"'
 
   # Recycle commands run when reusing an existing session
   recycle:
-    - git reset --hard
-    - git checkout main
-    - git pull
+    - git fetch origin
+    - git checkout {{ .DefaultBranch }}
+    - git reset --hard origin/{{ .DefaultBranch }}
+    - git clean -fd
 
 # Git executable (optional, defaults to "git")
 git_path: git
 
 # Rules for repository-specific setup
-# Each rule can have commands (hooks), copy patterns, and max_recycled
-# Pattern uses regex syntax matched against the remote URL (empty = catch-all)
-# Rules are processed in order; last matching rule with max_recycled set wins
 rules:
-  # Catch-all rule sets the default max_recycled (code default is 5 if not set)
+  # Catch-all rule sets the default max_recycled
   - pattern: ""
     max_recycled: 5
+    commands:
+      - hive ctx init  # Create .hive symlink
 
   - pattern: ".*/my-org/.*"
     commands:
       - npm install
-      - npm run build
     copy:
       - .envrc
       - configs/*.yaml
 
-  - pattern: ".*/hay-kot/.*"
-    commands:
-      - go mod download
-
-  # Override max_recycled for large repos (keep fewer sessions)
+  # Override max_recycled for large repos
   - pattern: ".*/my-org/large-repo"
     max_recycled: 2
 
-  # Unlimited recycled sessions for specific repos
-  - pattern: ".*/my-org/special-repo"
-    max_recycled: 0
-
 # TUI settings
 tui:
-  refresh_interval: 15s  # Auto-refresh sessions view (0 to disable)
+  refresh_interval: 15s
 
 # Keybindings for TUI actions
 keybindings:
-  # Built-in actions use the "action" property
   r:
-    action: recycle # Mark session as recycled
+    action: recycle
     help: recycle
     confirm: Are you sure you want to recycle this session?
   d:
-    action: delete # Delete session permanently
+    action: delete
     help: delete
     confirm: Are you sure you want to delete this session?
 
-  # Custom shell commands use the "sh" property
-  # Available template variables: .Path, .Name, .Remote, .ID, .State
+  # Custom shell commands (see Template Variables below)
   o:
     help: open in finder
     sh: "open {{ .Path }}"
+    silent: true
   O:
     help: open remote
     sh: "open {{ .Remote }}"
-  ctrl+o:
-    help: open in zed
-    sh: "zed {{ .Path }}"
-  ctrl+d:
-    help: run custom script
-    confirm: Are you sure? # Optional confirmation dialog
-    sh: "my-script {{ .Path }}"
 ```
+
+### Template Variables
+
+Commands support Go templates. Use `{{ .Variable }}` syntax, and `{{ .Variable | shq }}` for shell-safe quoting.
+
+**Spawn commands** (`commands.spawn`):
+
+| Variable | Description |
+|----------|-------------|
+| `.Path` | Absolute path to session directory |
+| `.Name` | Session name |
+| `.Slug` | URL-safe session name |
+| `.ContextDir` | Path to context directory |
+| `.Owner` | Repository owner |
+| `.Repo` | Repository name |
+
+**Batch spawn commands** (`commands.batch_spawn`): Same as spawn, plus:
+
+| Variable | Description |
+|----------|-------------|
+| `.Prompt` | User-provided prompt |
+
+**Recycle commands** (`commands.recycle`):
+
+| Variable | Description |
+|----------|-------------|
+| `.DefaultBranch` | Default branch name (e.g., `main`) |
+
+**Keybinding commands** (`keybindings.*.sh`):
+
+| Variable | Description |
+|----------|-------------|
+| `.Path` | Absolute path to session directory |
+| `.Name` | Session name |
+| `.Remote` | Git remote URL |
+| `.ID` | Session ID |
 
 ### Configuration Options
 
-| Option                 | Type                    | Default                                                 | Description                                                     |
-| ---------------------- | ----------------------- | ------------------------------------------------------- | --------------------------------------------------------------- |
-| `commands.spawn`       | `[]string`              | `[]`                                                    | Commands to run after session creation (Go templates supported) |
-| `commands.recycle`     | `[]string`              | `["git reset --hard", "git checkout main", "git pull"]` | Commands to run when recycling a session                        |
-| `git_path`             | `string`                | `git`                                                   | Path to git executable                                          |
-| `rules`                | `[]Rule`                | `[]`                                                    | Repository-specific setup rules                                 |
-| `keybindings`          | `map[string]Keybinding` | see below                                               | TUI keybinding configuration                                    |
-| `tui.refresh_interval` | `duration`              | `15s`                                                   | Auto-refresh interval for sessions view (0 to disable)          |
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `commands.spawn` | `[]string` | `[]` | Commands after session creation |
+| `commands.batch_spawn` | `[]string` | `[]` | Commands after batch session creation (has `.Prompt`) |
+| `commands.recycle` | `[]string` | git fetch/checkout/reset/clean | Commands when recycling a session |
+| `git_path` | `string` | `git` | Path to git executable |
+| `repo_dirs` | `[]string` | `[]` | Directories to scan for repositories (enables `n` key in TUI) |
+| `rules` | `[]Rule` | `[]` | Repository-specific setup rules |
+| `keybindings` | `map[string]Keybinding` | see below | TUI keybinding configuration |
+| `tui.refresh_interval` | `duration` | `15s` | Auto-refresh interval (0 to disable) |
+| `integrations.terminal.enabled` | `[]string` | `[]` | Terminal integrations to enable (e.g., `["tmux"]`) |
+| `integrations.terminal.poll_interval` | `duration` | `500ms` | How often to check terminal status |
+| `messaging.topic_prefix` | `string` | `agent` | Default prefix for generated topic IDs |
+| `context.symlink_name` | `string` | `.hive` | Name of symlink created by `hive ctx init` |
 
 ### Rules
 
@@ -261,6 +479,7 @@ Each keybinding can have:
 - `sh`: Shell command template (mutually exclusive with `action`)
 - `help`: Help text shown in TUI status bar
 - `confirm`: Confirmation prompt (optional, shows dialog before executing)
+- `silent`: Skip loading indicator for fast commands (default: false)
 - `exit`: Exit hive after command completes (see below)
 
 Default keybindings (`r` for recycle, `d` for delete) are provided and can be overridden.
@@ -298,17 +517,21 @@ HIVE_POPUP=true hive
 
 ## Data Storage
 
-Session data and cloned repositories are stored at:
-
-`$XDG_DATA_HOME/hive/` (default: `~/.local/share/hive/`)
+All data is stored at `$XDG_DATA_HOME/hive/` (default: `~/.local/share/hive/`):
 
 ```
 ~/.local/share/hive/
-├── sessions.json          # Session state
-└── repos/
-    ├── myproject-feature1/
-    ├── myproject-feature2/
-    └── ...
+├── sessions.json              # Session state
+├── repos/                     # Cloned repositories
+│   ├── myproject-feature1-abc123/
+│   └── myproject-feature2-def456/
+├── context/                   # Per-repo context directories
+│   ├── {owner}/{repo}/        # Linked via .hive symlink
+│   └── shared/                # Shared context
+└── messages/
+    └── topics/                # Pub/sub message storage
+        ├── agent.abc123.inbox.json
+        └── build.status.json
 ```
 
 ## Session Lifecycle
@@ -319,4 +542,132 @@ Session data and cloned repositories are stored at:
 ## Dependencies
 
 - Git (available in PATH or configured via `git_path`)
-- Terminal emulator with CLI spawning support (e.g., wezterm, kitty, alacritty)
+- Terminal emulator with CLI spawning support (e.g., wezterm, kitty, alacritty, tmux)
+
+## Tmux Integration
+
+Hive works well with tmux for managing AI agent sessions. Here's a complete example setup.
+
+### Example Configuration
+
+```yaml
+version: 0.2.3
+repo_dirs:
+  - ~/code/repos
+
+integrations:
+  terminal:
+    enabled: [tmux]
+    poll_interval: 500ms
+
+tui:
+  refresh_interval: 15s
+
+commands:
+  spawn:
+    - ~/.config/tmux/layouts/hive.sh "{{ .Name }}" "{{ .Path }}"
+  batch_spawn:
+    - ~/.config/tmux/layouts/hive.sh -b "{{ .Name }}" "{{ .Path }}" "{{ .Prompt }}"
+
+rules:
+  - pattern: ""
+    max_recycled: 3
+    commands:
+      - hive ctx init
+
+keybindings:
+  enter:
+    help: open/create tmux
+    sh: ~/.config/tmux/layouts/hive.sh "{{ .Name }}" "{{ .Path }}"
+    exit: $HIVE_POPUP
+    silent: true
+  p:
+    help: popup
+    sh: tmux display-popup -E -w 80% -h 80% "tmux new-session -s hive-popup -t '{{ .Name }}'"
+    silent: true
+  ctrl+d:
+    help: kill session
+    sh: tmux kill-session -t "{{ .Name }}" 2>/dev/null || true
+  t:
+    help: send /tidy
+    sh: claude-send "{{ .Name }}:claude" "/tidy"
+    silent: true
+```
+
+### Helper Script: hive.sh
+
+Creates a tmux session with two windows: `claude` (running the AI) and `shell`.
+
+```bash
+#!/bin/bash
+# Usage: hive.sh [-b] [session-name] [working-dir] [prompt]
+#   -b: background mode (create session without attaching)
+
+BACKGROUND=false
+if [ "$1" = "-b" ]; then
+    BACKGROUND=true
+    shift
+fi
+
+SESSION="${1:-hive}"
+WORKDIR="${2:-$PWD}"
+PROMPT="${3:-}"
+
+if [ -n "$PROMPT" ]; then
+    CLAUDE_CMD="claude '$PROMPT'"
+else
+    CLAUDE_CMD="claude"
+fi
+
+if tmux has-session -t "$SESSION" 2>/dev/null; then
+    [ "$BACKGROUND" = true ] && exit 0
+    if [ -n "$TMUX" ]; then
+        tmux switch-client -t "$SESSION"
+    else
+        tmux attach-session -t "$SESSION"
+    fi
+else
+    tmux new-session -d -s "$SESSION" -n claude -c "$WORKDIR" "$CLAUDE_CMD"
+    tmux new-window -t "$SESSION" -n shell -c "$WORKDIR"
+    tmux select-window -t "$SESSION:claude"
+
+    [ "$BACKGROUND" = true ] && exit 0
+    if [ -n "$TMUX" ]; then
+        tmux switch-client -t "$SESSION"
+    else
+        tmux attach-session -t "$SESSION"
+    fi
+fi
+```
+
+### Helper Script: claude-send
+
+Sends text to a Claude session in tmux (useful for remote commands like `/tidy`).
+
+```bash
+#!/bin/bash
+# Usage: claude-send <target> <text>
+TARGET="${1:?Usage: claude-send <target> <text>}"
+TEXT="${2:?Usage: claude-send <target> <text>}"
+
+tmux send-keys -t "$TARGET" "$TEXT"
+sleep 0.5
+tmux send-keys -t "$TARGET" C-m
+```
+
+### Tmux Config Additions
+
+```bash
+# Quick access to hive TUI as popup (prefix + Space)
+bind Space display-popup -E -w 85% -h 85% "HIVE_POPUP=true hive"
+
+# Quick switch to hive session
+bind l switch-client -t hive
+```
+
+### Quick Alias
+
+```bash
+# Start or attach to a persistent hive session
+alias hv="tmux new-session -As hive hive"
+```
