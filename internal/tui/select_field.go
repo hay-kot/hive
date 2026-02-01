@@ -161,14 +161,16 @@ func (s SelectField) View() string {
 	}
 	title := titleStyle.Render(s.title)
 
-	// Border color based on focus
+	// Border style based on focus (left border only)
 	borderStyle := formFieldStyle
 	if s.focused {
 		borderStyle = formFieldFocusedStyle
 	}
 
-	// List content
-	content := borderStyle.Width(s.width).Render(s.list.View())
+	// List content - trim trailing whitespace from list view
+	listView := s.list.View()
+
+	content := borderStyle.Render(listView)
 
 	return lipgloss.JoinVertical(lipgloss.Left, title, content)
 }

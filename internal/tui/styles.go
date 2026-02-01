@@ -115,15 +115,16 @@ var (
 	formTitleBlurredStyle = lipgloss.NewStyle().
 				Foreground(colorGray)
 
+	// Left border only for focused/unfocused states
 	formFieldStyle = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
+			Border(lipgloss.ThickBorder(), false, false, false, true).
 			BorderForeground(colorGray).
-			Padding(0, 1)
+			PaddingLeft(1)
 
 	formFieldFocusedStyle = lipgloss.NewStyle().
-				Border(lipgloss.RoundedBorder()).
+				Border(lipgloss.ThickBorder(), false, false, false, true).
 				BorderForeground(colorBlue).
-				Padding(0, 1)
+				PaddingLeft(1)
 
 	formErrorStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#f7768e")) // Tokyo Night red

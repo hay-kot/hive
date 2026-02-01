@@ -195,7 +195,7 @@ func (f *NewSessionForm) View() string {
 	}
 	nameTitle := nameTitleStyle.Render("Session Name")
 
-	// Input field with border
+	// Input field with left border indicator
 	inputBorderStyle := formFieldStyle
 	if f.focusedField == 1 {
 		inputBorderStyle = formFieldFocusedStyle
@@ -205,7 +205,7 @@ func (f *NewSessionForm) View() string {
 	// Error message if present
 	var errorView string
 	if f.nameError != "" {
-		errorView = formErrorStyle.Render(f.nameError)
+		errorView = formErrorStyle.PaddingLeft(2).Render(f.nameError)
 	}
 
 	// Help text
