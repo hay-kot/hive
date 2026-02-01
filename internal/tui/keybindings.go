@@ -58,9 +58,15 @@ func NewKeybindingHandler(keybindings map[string]config.Keybinding, service *hiv
 }
 
 // Resolve attempts to resolve a key press to an action for the given session.
+// Recycled sessions only allow delete actions to prevent accidental operations.
 func (h *KeybindingHandler) Resolve(key string, sess session.Session) (Action, bool) {
 	kb, exists := h.keybindings[key]
 	if !exists {
+		return Action{}, false
+	}
+
+	// Recycled sessions only allow delete - prevent accidental operations
+	if sess.State == session.StateRecycled && kb.Action != config.ActionDelete {
 		return Action{}, false
 	}
 
