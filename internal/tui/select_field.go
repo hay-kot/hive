@@ -69,6 +69,7 @@ func NewSelectField(title string, items []SelectItem, selected int) SelectField 
 	l.SetShowTitle(false)
 	l.SetShowStatusBar(false)
 	l.SetFilteringEnabled(true)
+	l.SetShowFilter(false) // Only show filter input when actively filtering
 	l.SetShowHelp(false)
 	l.Styles.TitleBar = lipgloss.NewStyle()
 
@@ -161,8 +162,18 @@ func (s SelectField) View() string {
 	}
 	title := titleStyle.Render(s.title)
 
-	// Content: title + list (list.View() includes filter when active)
-	content := lipgloss.JoinVertical(lipgloss.Left, title, s.list.View())
+	// Build content: title + filter (only when active) + list
+	var content string
+	if s.list.SettingFilter() {
+		// Show filter input only when actively filtering
+		content = lipgloss.JoinVertical(lipgloss.Left,
+			title,
+			s.list.FilterInput.View(),
+			s.list.View(),
+		)
+	} else {
+		content = lipgloss.JoinVertical(lipgloss.Left, title, s.list.View())
+	}
 
 	// Border style based on focus (left border only)
 	borderStyle := formFieldStyle
