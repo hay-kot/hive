@@ -539,6 +539,10 @@ All data is stored at `$XDG_DATA_HOME/hive/` (default: `~/.local/share/hive/`):
 1. **Active** - Session is in use, environment exists
 2. **Recycled** - Marked for reuse, can be claimed by `hive new` or deleted by `hive prune`
 
+## Acknowledgments
+
+This project was heavily inspired by [agent-deck](https://github.com/asheshgoplani/agent-deck) by Ashesh Goplani. Several concepts and code patterns were adapted from their work. Thanks to the agent-deck team for open-sourcing their project under the MIT license.
+
 ## Dependencies
 
 - Git (available in PATH or configured via `git_path`)
